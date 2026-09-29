@@ -1,0 +1,104 @@
+version: '3.8'
+
+services:
+  # -------------------------------------------------------------
+  # 1. DATABASE: PostgreSQL for Cloud Data Storage
+  # -------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: face_access_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: face_access_db
+      POSTGRES_USER: face_admin
+      POSTGRES_PASSWORD: face_secret_password_2026
+      TZ: Asia/Ho_Chi_Minh
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docs/cloud_database_schema.sql:/docker-entrypoint-initdb.d/01_init.sql:ro
+    networks:
+      - face_access_net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U face_admin -d face_access_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # -------------------------------------------------------------
+  # 2. CACHE & MESSAGE QUEUE: Redis (Sessions, Heartbeat, Rate limit)
+  # -------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: face_access_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - face_access_net
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # -------------------------------------------------------------
+  # 3. BACKEND API SERVICE (FastAPI / Spring Boot)
+  # -------------------------------------------------------------
+  # Khi bắt đầu code backend, bạn có thể build trực tiếp từ thư mục ./backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: face_access_backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://face_admin:face_secret_password_2026@postgres:5432/face_access_db
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: super_secure_jwt_secret_key_access_control_2026
+      DEVICE_SYNC_SECRET: cloud_edge_shared_token_2026
+      STORAGE_DIR: /app/storage/faces
+    volumes:
+      - face_storage:/app/storage/faces
+      - ./backend:/app
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - face_access_net
+
+  # -------------------------------------------------------------
+  # 4. WEB FRONTEND & REVERSE PROXY: Nginx + Static Portal
+  # -------------------------------------------------------------
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: face_access_web
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - face_access_net
+
+networks:
+  face_access_net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  face_storage:
+    driver: local
