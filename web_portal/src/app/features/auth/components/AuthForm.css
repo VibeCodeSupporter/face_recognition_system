@@ -1,0 +1,90 @@
+/* ==========================================================================
+   AuthForm — style dùng chung cho LoginForm / RegisterForm / ForgotPasswordForm.
+   Chỉ bổ sung phần bố cục; style chi tiết của control do antd theme lo.
+   ========================================================================== */
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.auth-form__alert {
+  margin-bottom: var(--space-md);
+}
+
+/* Hàng "Remember me" + "Forgot password?" */
+.auth-form__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-xs) var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+
+.auth-form__submit {
+  margin-top: var(--space-xs);
+}
+
+.auth-form__hint {
+  margin: 0 0 var(--space-sm);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+}
+
+.auth-form__switch {
+  margin: var(--space-md) 0 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  text-align: center;
+}
+
+.auth-form__terms {
+  margin-bottom: var(--space-md);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-base);
+}
+
+/* Chừa chỗ cho thông báo lỗi của checkbox điều khoản (antd render dưới label) */
+.auth-form__terms .ant-checkbox-wrapper {
+  align-items: flex-start;
+}
+
+.auth-form .ant-form-item:last-of-type {
+  margin-bottom: 0;
+}
+
+/* Link "dạng chữ" (Terms of Service, Privacy Policy) — dùng <button> để không
+   kích hoạt điều hướng hash, vẫn truy cập được bằng bàn phím. */
+.auth-form__link-button {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--color-primary);
+  font: inherit;
+  cursor: pointer;
+}
+
+.auth-form__link-button:hover,
+.auth-form__link-button:focus-visible {
+  color: var(--color-primary-hover);
+  text-decoration: underline;
+}
+
+/* ── Mobile: input ≥ 16px để iOS Safari không tự zoom khi focus ───────── */
+@media (max-width: 767px) {
+  .auth-form .ant-input,
+  .auth-form .ant-input-password input,
+  .auth-form .ant-input-affix-wrapper {
+    font-size: 16px;
+  }
+}
+
+/* ── Desktop rộng: form thoáng hơn một chút ───────────────────────────── */
+@media (min-width: 1440px) {
+  .auth-form__submit {
+    margin-top: var(--space-sm);
+  }
+}
