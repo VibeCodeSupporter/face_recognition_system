@@ -1,0 +1,36 @@
+/* ==========================================================================
+   ResetLinkSentPanel — ghi đè nhẹ Result của antd cho khớp khổ form auth.
+   ========================================================================== */
+.auth-result {
+  padding: var(--space-md) 0 0;
+}
+
+.auth-result .ant-result-title {
+  font-size: var(--font-size-xl);
+  letter-spacing: var(--letter-spacing-heading);
+}
+
+.auth-result .ant-result-subtitle {
+  color: var(--color-text-muted);
+  font-size: var(--font-size-sm);
+  line-height: var(--line-height-base);
+}
+
+.auth-result .ant-result-icon .anticon {
+  font-size: clamp(2.5rem, 2rem + 2vw, 3.5rem);
+}
+
+/* ── Điện thoại: thu gọn khoảng cách của Result ───────────────────────── */
+@media (max-width: 480px) {
+  .auth-result .ant-result-title {
+    font-size: var(--font-size-lg);
+  }
+
+  .auth-result .ant-result-extra {
+    width: 100%;
+  }
+
+  .auth-result .ant-result-extra .ant-btn {
+    width: 100%;
+  }
+}
