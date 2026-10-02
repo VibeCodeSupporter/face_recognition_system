@@ -1,0 +1,81 @@
+/* ==========================================================================
+   AuthLayout — khung 2 vùng cho màn hình public.
+   Mobile: brand banner ở trên, form ở dưới (xếp dọc).
+   Desktop: brand panel bên trái (full height), form căn giữa bên phải.
+   ========================================================================== */
+.auth-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100svh;
+}
+
+.auth-layout__aside {
+  grid-row: 1;
+}
+
+.auth-layout__main {
+  grid-row: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-block: var(--space-xl);
+  padding-inline: var(--safe-inline-start) var(--safe-inline-end);
+}
+
+.auth-layout__content {
+  width: 100%;
+  max-width: var(--auth-form-width);
+}
+
+/* ── Desktop: 2 cột ─────────────────────────────────────────────────── */
+@media (min-width: 1024px) {
+  .auth-layout {
+    grid-template-columns: minmax(19rem, 0.92fr) minmax(0, 1.08fr);
+    grid-template-rows: minmax(0, 1fr);
+  }
+
+  .auth-layout__aside {
+    grid-row: 1;
+    grid-column: 1;
+    height: 100%;
+  }
+
+  .auth-layout__main {
+    grid-row: 1;
+    grid-column: 2;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+}
+
+/* ── Tablet lớn: nới vùng form, giảm padding để form không bị chật ──── */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .auth-layout__content {
+    max-width: min(100%, 28rem);
+  }
+}
+
+/* ── Màn hình thấp (laptop 13" nằm ngang): ưu tiên hiển thị từ trên xuống ── */
+@media (min-width: 1024px) and (max-height: 800px) {
+  .auth-layout__main {
+    align-items: flex-start;
+    padding-block: var(--space-lg);
+  }
+}
+
+/* ── Ultra-wide: cho form rộng rãi hơn, tránh bị lạc lõng giữa màn hình ── */
+@media (min-width: 1920px) {
+  .auth-layout__content {
+    max-width: 28rem;
+  }
+}
+
+/* ── Điện thoại nằm ngang: thu gọn banner thương hiệu ─────────────────── */
+@media (max-width: 900px) and (orientation: landscape) {
+  .auth-layout__main {
+    padding-block: var(--space-md);
+  }
+}

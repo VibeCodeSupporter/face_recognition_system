@@ -1,0 +1,69 @@
+.brand-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  line-height: 1.15;
+}
+
+.brand-mark__logo {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: clamp(2.1rem, 1.9rem + 0.8vw, 2.6rem);
+  height: clamp(2.1rem, 1.9rem + 0.8vw, 2.6rem);
+  border-radius: var(--radius-md);
+  background: var(--gradient-brand);
+  color: #fff;
+  font-size: clamp(1rem, 0.9rem + 0.4vw, 1.25rem);
+  box-shadow: var(--shadow-sm);
+}
+
+.brand-mark__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.brand-mark__name {
+  font-size: var(--font-size-lg);
+  font-weight: 700;
+  letter-spacing: var(--letter-spacing-heading);
+}
+
+.brand-mark__product {
+  font-size: var(--font-size-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  opacity: 0.7;
+}
+
+/* ── Variants ────────────────────────────────────────────────────────── */
+.brand-mark--sm {
+  gap: var(--space-xs);
+}
+
+.brand-mark--sm .brand-mark__name {
+  font-size: var(--font-size-md);
+}
+
+.brand-mark--light {
+  color: #fff;
+}
+
+.brand-mark--light .brand-mark__logo {
+  background: rgba(255, 255, 255, 0.16);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  backdrop-filter: blur(6px);
+}
+
+.brand-mark--dark {
+  color: var(--color-text-heading);
+}
+
+/* Trên màn hình rất nhỏ, bỏ dòng phụ để mark không bị xuống dòng */
+@media (max-width: 400px) {
+  .brand-mark__product {
+    display: none;
+  }
+}

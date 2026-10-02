@@ -1,0 +1,156 @@
+/* ==========================================================================
+   AuthBrandPanel — cột thương hiệu của vùng public.
+   Desktop: panel cao full chiều cao cột trái.
+   Mobile/tablet: thu gọn thành banner (ẩn bớt chi tiết để không chiếm màn hình).
+   ========================================================================== */
+.auth-brand {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+  height: 100%;
+  overflow: hidden;
+  padding-block: var(--brand-panel-padding-block);
+  padding-inline: var(--brand-panel-padding-inline);
+  padding-inline-start: max(var(--brand-panel-padding-inline), env(safe-area-inset-left));
+  color: #fff;
+  background-image: var(--gradient-brand);
+}
+
+/* Lưới mờ tạo chiều sâu cho panel */
+.auth-brand::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image: linear-gradient(var(--gradient-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--gradient-grid-line) 1px, transparent 1px);
+  background-size: clamp(30px, 3.6vw, 54px) clamp(30px, 3.6vw, 54px);
+  -webkit-mask-image: radial-gradient(125% 100% at 15% 0%, #000 32%, transparent 88%);
+  mask-image: radial-gradient(125% 100% at 15% 0%, #000 32%, transparent 88%);
+}
+
+/* Quầng sáng mềm ở đáy panel */
+.auth-brand::after {
+  content: '';
+  position: absolute;
+  inset: auto -25% -35% -25%;
+  height: 65%;
+  z-index: -1;
+  background: radial-gradient(55% 55% at 50% 50%, rgba(255, 255, 255, 0.2), transparent 72%);
+}
+
+.auth-brand__top {
+  display: flex;
+  align-items: center;
+}
+
+.auth-brand__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  margin-block: auto;
+}
+
+.auth-brand .auth-brand__headline {
+  margin: 0;
+  color: #fff;
+  font-size: var(--font-size-2xl);
+  letter-spacing: var(--letter-spacing-heading);
+}
+
+.auth-brand .auth-brand__description {
+  margin: 0;
+  max-width: 34rem;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: var(--font-size-md);
+}
+
+.auth-brand__features {
+  display: grid;
+  gap: var(--space-md);
+  margin: var(--space-sm) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.auth-brand__feature {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-sm);
+}
+
+.auth-brand__feature-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.14);
+  font-size: 1rem;
+}
+
+.auth-brand__feature-title {
+  display: block;
+  font-size: var(--font-size-md);
+  font-weight: 600;
+}
+
+.auth-brand__feature-description {
+  display: block;
+  color: rgba(255, 255, 255, 0.74);
+  font-size: var(--font-size-sm);
+}
+
+.auth-brand__footer {
+  margin: 0;
+  padding-top: var(--space-md);
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+  color: rgba(255, 255, 255, 0.72);
+  font-size: var(--font-size-xs);
+}
+
+/* ── Tablet / mobile: biến panel thành banner gọn phía trên ──────────── */
+@media (max-width: 1023px) {
+  .auth-brand {
+    height: auto;
+    gap: var(--space-sm);
+    padding-block: var(--space-lg);
+  }
+
+  .auth-brand__body {
+    gap: var(--space-xs);
+    margin-block: 0;
+  }
+
+  .auth-brand .auth-brand__headline {
+    font-size: var(--font-size-xl);
+  }
+
+  .auth-brand__features,
+  .auth-brand__footer {
+    display: none;
+  }
+}
+
+/* ── Điện thoại: banner chỉ còn logo + tiêu đề ────────────────────────── */
+@media (max-width: 767px) {
+  .auth-brand .auth-brand__description {
+    display: none;
+  }
+}
+
+/* ── Laptop màn hình thấp: bỏ các khối phụ để form luôn nằm trong viewport ── */
+@media (min-width: 1024px) and (max-height: 820px) {
+  .auth-brand {
+    gap: var(--space-md);
+  }
+
+  .auth-brand__features,
+  .auth-brand__footer {
+    display: none;
+  }
+}
