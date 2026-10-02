@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="FaceAccess - Quản trị người dùng, thiết bị và dữ liệu nhận diện khuôn mặt">
+  <title>FaceAccess | Quản trị</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" referrerpolicy="no-referrer">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="js/api.js" defer></script>
+  <script src="js/forms.js" defer></script>
+  <script src="js/app.js" defer></script>
+</head>
+<body>
+  <aside class="sidebar" aria-label="Điều hướng">
+    <a class="brand" href="#users"><i class="fa-solid fa-expand" aria-hidden="true"></i><span>FaceAccess<small>Quản trị</small></span></a>
+    <nav>
+      <button class="nav-item active" data-view="users" aria-current="page"><i class="fa-solid fa-users" aria-hidden="true"></i><span>Người dùng</span></button>
+      <button class="nav-item" data-view="devices"><i class="fa-solid fa-microchip" aria-hidden="true"></i><span>Thiết bị</span></button>
+      <button class="nav-item" data-view="sessions"><i class="fa-solid fa-id-card" aria-hidden="true"></i><span>Phiên đăng ký</span></button>
+      <button class="nav-item" data-view="logs"><i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i><span>Lịch sử truy cập</span></button>
+    </nav>
+    <div class="sidebar-bottom"><a href="/docs" target="_blank" rel="noopener"><i class="fa-solid fa-code" aria-hidden="true"></i> Swagger API</a><span>Giờ Việt Nam · UTC+7</span></div>
+  </aside>
+  <div class="workspace">
+    <header class="topbar">
+      <span class="topbar-label">FaceAccess / <span id="breadcrumb">Người dùng</span></span>
+      <div class="topbar-actions">
+        <span id="connection-status" class="connection-status">Chưa kết nối</span>
+        <button id="connect-button" class="button secondary"><i class="fa-solid fa-key" aria-hidden="true"></i><span>Kết nối</span></button>
+        <button id="disconnect-button" class="icon-button" title="Ngắt kết nối" aria-label="Ngắt kết nối" hidden><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i></button>
+      </div>
+    </header>
+    <main id="main-content">
+      <div class="page-heading">
+        <div><h1 id="page-title">Người dùng</h1><p id="record-summary" aria-live="polite">Chưa tải dữ liệu</p></div>
+        <div class="page-actions">
+          <button id="refresh-button" class="icon-button" title="Tải lại dữ liệu" aria-label="Tải lại dữ liệu" disabled><i class="fa-solid fa-rotate" aria-hidden="true"></i></button>
+          <button id="create-button" class="button primary" disabled><i class="fa-solid fa-plus" aria-hidden="true"></i><span>Thêm người dùng</span></button>
+        </div>
+      </div>
+      <div id="page-error" class="error-banner" role="alert" hidden></div>
+      <form id="filters-form" class="filter-bar">
+        <label class="search-field"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><input id="search" type="search" placeholder="Tìm tên, mã nhân viên" aria-label="Tìm trong danh sách" autocomplete="off"></label>
+        <div id="filter-fields" class="filter-fields"></div>
+        <button id="apply-filters" type="submit" class="button secondary" disabled><i class="fa-solid fa-filter" aria-hidden="true"></i><span>Lọc</span></button>
+        <button id="reset-filters" type="button" class="icon-button" title="Xóa bộ lọc" aria-label="Xóa bộ lọc" disabled><i class="fa-solid fa-filter-circle-xmark" aria-hidden="true"></i></button>
+      </form>
+      <div class="table-scroll" tabindex="0" role="region" aria-label="Danh sách dữ liệu">
+        <table><thead id="table-head"></thead><tbody id="table-body"><tr><td class="empty-cell">Chưa kết nối backend</td></tr></tbody></table>
+      </div>
+      <footer class="table-footer">
+        <span id="page-range">0 bản ghi</span>
+        <div class="pagination">
+          <label for="page-size">Số dòng</label><select id="page-size"><option value="20">20</option><option value="50">50</option><option value="100">100</option></select>
+          <button id="previous-page" class="icon-button" title="Trang trước" aria-label="Trang trước" disabled><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button>
+          <span id="page-number">1</span>
+          <button id="next-page" class="icon-button" title="Trang sau" aria-label="Trang sau" disabled><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
+        </div>
+      </footer>
+    </main>
+  </div>
+  <dialog id="connection-dialog" aria-labelledby="connection-title">
+    <form id="connection-form">
+      <div class="dialog-heading"><h2 id="connection-title">Kết nối backend</h2><button type="button" class="icon-button" data-close title="Đóng" aria-label="Đóng"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></div>
+      <div class="dialog-content">
+        <div class="field"><label for="api-origin">API</label><input id="api-origin" readonly></div>
+        <div class="field"><label for="api-key">Backend API key <span class="required">*</span></label><input id="api-key" type="password" required minlength="32" maxlength="256" autocomplete="off" spellcheck="false"></div>
+        <div id="connection-error" class="form-error" role="alert" hidden></div>
+      </div>
+      <div class="dialog-footer"><button type="button" class="button secondary" data-close>Hủy</button><button type="submit" class="button primary">Kết nối</button></div>
+    </form>
+  </dialog>
+  <dialog id="editor-dialog" aria-labelledby="editor-title">
+    <form id="editor-form">
+      <div class="dialog-heading"><h2 id="editor-title"></h2><button type="button" class="icon-button" data-close title="Đóng" aria-label="Đóng"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></div>
+      <div class="dialog-content"><div id="editor-fields" class="form-grid"></div><div id="editor-error" class="form-error" role="alert" hidden></div></div>
+      <div class="dialog-footer"><button type="button" class="button secondary" data-close>Hủy</button><button id="save-button" type="submit" class="button primary"><i class="fa-solid fa-check" aria-hidden="true"></i><span>Lưu</span></button></div>
+    </form>
+  </dialog>
+  <dialog id="confirm-dialog" class="compact-dialog" aria-labelledby="confirm-title">
+    <form id="confirm-form">
+      <div class="dialog-heading"><h2 id="confirm-title"></h2><button type="button" class="icon-button" data-close title="Đóng" aria-label="Đóng"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></div>
+      <div class="dialog-content"><p id="confirm-message"></p><div id="confirm-error" class="form-error" role="alert" hidden></div></div>
+      <div class="dialog-footer"><button type="button" class="button secondary" data-close>Hủy</button><button id="confirm-button" type="submit" class="button danger">Xác nhận</button></div>
+    </form>
+  </dialog>
+  <dialog id="detail-dialog" aria-labelledby="detail-title">
+    <div class="dialog-heading"><h2 id="detail-title"></h2><button type="button" class="icon-button" data-close title="Đóng" aria-label="Đóng"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></div>
+    <div id="detail-content" class="dialog-content"></div>
+    <div class="dialog-footer"><button id="copy-token" class="button secondary" hidden><i class="fa-regular fa-copy" aria-hidden="true"></i><span>Sao chép token</span></button><button class="button primary" data-close>Đóng</button></div>
+  </dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>
