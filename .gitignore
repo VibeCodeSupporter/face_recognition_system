@@ -1,5 +1,25 @@
 # Dependencies (ReactJS / Node)
 web_portal/node_modules/
+# Environment variables
+.env
+.venv
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Virtual environment
+###--Xóa commit cuối cùng trên remote: 
+# git switch <ten_nhanh>
+# git fetch origin
+# git log --oneline -5
+# git reset --hard HEAD~1
+# git push --force-with-lease origin <ten_nhanh>
 
 
 

@@ -1,0 +1,10 @@
+{
+  "liveServer.settings.ignoreFiles": [
+    "**/backend/**",
+    "**/*.json",
+    "**/*.py",
+    "**/*.md",
+    "**/*.bat"
+  ],
+  "liveServer.settings.donotShowInfoMsg": true
+}
