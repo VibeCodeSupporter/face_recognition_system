@@ -6,9 +6,10 @@ from starlette.responses import JSONResponse
 
 
 class RequestGuard:
-    def __init__(self, app, api_key: str):
+    def __init__(self, app, api_key: str, jwt_secret: str = ""):
         self.app = app
         self.expected = hashlib.sha256(api_key.encode()).digest()
+        self.jwt_secret = jwt_secret or api_key
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
@@ -30,14 +31,39 @@ class RequestGuard:
             response = JSONResponse({"error": {"code": code, "message": message, "request_id": request_id}}, status_code=status)
             await response(scope, receive, secure_send)
 
-        # Static portal files contain no credentials; database APIs still require a key.
-        public_docs = scope["path"] in {"/docs", "/redoc", "/openapi.json", "/docs/oauth2-redirect"}
-        public_portal = scope["method"] in {"GET", "HEAD"} and (scope["path"] == "/portal" or scope["path"].startswith("/portal/"))
-        if not (public_docs or public_portal):
-            keys = [value for name, value in scope["headers"] if name.lower() == b"x-api-key"]
-            actual = hashlib.sha256(keys[0] if len(keys) == 1 else b"").digest()
-            if not hmac.compare_digest(actual, self.expected):
-                await reject(401, "UNAUTHORIZED", "A valid backend x-api-key is required.")
+        path = scope["path"]
+        method = scope["method"]
+        is_api = path.startswith("/api/")
+        public_docs = path in {"/docs", "/redoc", "/openapi.json", "/docs/oauth2-redirect"}
+        public_static = (not is_api) and method in {"GET", "HEAD"}
+        public_auth = path == "/api/v1/auth/login" and method == "POST"
+
+        if not (public_docs or public_static or public_auth):
+            authenticated = False
+            # 1. Check Bearer token
+            auth_headers = [value for name, value in scope["headers"] if name.lower() == b"authorization"]
+            if auth_headers:
+                auth_str = auth_headers[0].decode("latin1").strip()
+                if auth_str.lower().startswith("bearer "):
+                    token = auth_str[7:].strip()
+                    try:
+                        import jwt
+                        payload = jwt.decode(token, self.jwt_secret, algorithms=["HS256"])
+                        scope.setdefault("state", {})["admin"] = payload
+                        authenticated = True
+                    except Exception:
+                        await reject(401, "UNAUTHORIZED", "Token xác thực không hợp lệ hoặc đã hết hạn.")
+                        return
+
+            # 2. Check x-api-key
+            if not authenticated:
+                keys = [value for name, value in scope["headers"] if name.lower() == b"x-api-key"]
+                actual = hashlib.sha256(keys[0] if len(keys) == 1 else b"").digest()
+                if hmac.compare_digest(actual, self.expected):
+                    authenticated = True
+
+            if not authenticated:
+                await reject(401, "UNAUTHORIZED", "A valid backend x-api-key or Admin Bearer token is required.")
                 return
         chunks, length = [], 0
         while True:

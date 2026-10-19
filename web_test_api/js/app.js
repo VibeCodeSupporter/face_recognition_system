@@ -36,22 +36,51 @@ function showError(selector, error) {
   element.hidden = false;
 }
 function connectionState(connected, failed = false) {
-  $('#connection-status').textContent = connected ? 'Đã kết nối' : failed ? 'Mất kết nối' : 'Chưa kết nối';
-  $('#connection-status').className = `connection-status${connected ? ' connected' : failed ? ' failed' : ''}`;
-  $('#connect-button span').textContent = connected ? 'API key' : 'Kết nối';
-  $('#disconnect-button').hidden = !connected;
+  if (connected) {
+    if (Api.token) {
+      $('#connection-status').textContent = 'Đã đăng nhập';
+      $('#connection-status').className = 'connection-status connected';
+      $('#admin-badge').hidden = false;
+      $('#admin-name').textContent = Api.admin?.full_name || Api.admin?.username || 'Admin';
+      $('#login-button').hidden = true;
+      $('#logout-button').hidden = false;
+      $('#connect-button').hidden = true;
+      $('#disconnect-button').hidden = false;
+    } else {
+      $('#connection-status').textContent = 'Đã kết nối API key';
+      $('#connection-status').className = 'connection-status connected';
+      $('#admin-badge').hidden = true;
+      $('#login-button').hidden = true;
+      $('#logout-button').hidden = true;
+      $('#connect-button').hidden = false;
+      $('#connect-button span').textContent = 'API key';
+      $('#disconnect-button').hidden = false;
+    }
+  } else {
+    $('#connection-status').textContent = failed ? 'Mất kết nối' : 'Chưa đăng nhập';
+    $('#connection-status').className = `connection-status${failed ? ' failed' : ''}`;
+    $('#admin-badge').hidden = true;
+    $('#login-button').hidden = false;
+    $('#logout-button').hidden = true;
+    $('#connect-button').hidden = false;
+    $('#connect-button span').textContent = 'API Key';
+    $('#disconnect-button').hidden = true;
+  }
   updateControls();
 }
 function updateControls() {
-  const blocked = !Api.key || App.loading || App.pending || App.opening;
+  const blocked = !Api.isAuthenticated() || App.loading || App.pending || App.opening;
   for (const selector of ['#create-button', '#apply-filters', '#reset-filters', '#page-size']) $(selector).disabled = blocked;
-  $('#refresh-button').disabled = !Api.key || App.loading || App.pending;
+  $('#refresh-button').disabled = !Api.isAuthenticated() || App.loading || App.pending;
   $('#previous-page').disabled = blocked || !App.loaded || App.page === 0;
   $('#next-page').disabled = blocked || !App.loaded || !App.hasMore;
   for (const button of $$('#table-body button')) button.disabled = blocked || !UUID_PATTERN.test(button.dataset.id);
 }
 function disconnect(failed = false) {
   Api.key = '';
+  Api.token = '';
+  Api.admin = null;
+  void Api.logout();
   App.controller?.abort();
   App.loadVersion++;
   App.rows = []; App.users = []; App.devices = []; App.lookupsReady = false; App.loaded = false; App.loading = false; App.page = 0;
@@ -108,11 +137,11 @@ async function loadLookups(signal, force = false) {
   const { data: users } = await Api.request('/users', { signal });
   if (!Array.isArray(users)) throw new ApiError('GET /users cần trả data là mảng và có id để quản trị.', 0, 'INVALID_RESPONSE');
   const devices = await allDevices(signal);
-  if (!Api.key || signal?.aborted) return;
+  if (!Api.isAuthenticated() || signal?.aborted) return;
   App.users = users; App.devices = devices; App.lookupsReady = true;
 }
 async function loadView(forceLookups = false) {
-  if (!Api.key || App.pending) return;
+  if (!Api.isAuthenticated() || App.pending) return;
   App.controller?.abort();
   const controller = new AbortController();
   App.controller = controller;
@@ -163,7 +192,7 @@ function navigate(view) {
   $('#page-title').textContent = VIEWS[view].title;
   $('#create-button span').textContent = VIEWS[view].create;
   renderFilters(); render();
-  if (Api.key) void loadView();
+  if (Api.isAuthenticated()) void loadView();
 }
 
 function personCell(row) {
@@ -184,11 +213,11 @@ function rowHTML(row) {
   let cells;
   if (view === 'users') {
     cells = [personCell(row), escapeHTML(row.user_code), escapeHTML(row.department || '—'), escapeHTML(row.role || '—'),
-      `<div>${escapeHTML(row.email || '—')}</div><div class="cell-secondary">${escapeHTML(row.phone || '—')}</div>`, badge(row.status), escapeHTML(dateText(row.created_at))];
+    `<div>${escapeHTML(row.email || '—')}</div><div class="cell-secondary">${escapeHTML(row.phone || '—')}</div>`, badge(row.status), escapeHTML(dateText(row.created_at))];
     actions.push(actionButton('edit', row.id, 'fa-pen', 'Sửa người dùng'), actionButton('embedding', row.id, 'fa-fingerprint', 'Vector khuôn mặt'), actionButton('delete', row.id, 'fa-trash', 'Xóa người dùng', true));
   } else if (view === 'devices') {
     cells = [escapeHTML(row.name), escapeHTML(row.device_code), escapeHTML(row.location || '—'), badge(row.status),
-      `${escapeHTML(row.settings?.threshold ?? '—')}% · ${escapeHTML(row.settings?.doorDuration ?? '—')}s<div class="cell-secondary">Liveness: ${row.settings?.liveness ? 'Bật' : 'Tắt'}</div>`, escapeHTML(dateText(row.last_seen_at))];
+    `${escapeHTML(row.settings?.threshold ?? '—')}% · ${escapeHTML(row.settings?.doorDuration ?? '—')}s<div class="cell-secondary">Liveness: ${row.settings?.liveness ? 'Bật' : 'Tắt'}</div>`, escapeHTML(dateText(row.last_seen_at))];
     actions.push(actionButton('edit', row.id, 'fa-pen', 'Sửa thiết bị'), actionButton('delete', row.id, 'fa-trash', 'Xóa thiết bị', true));
   } else if (view === 'sessions') {
     cells = [escapeHTML(referenceName(App.users, row.user_id, true)), escapeHTML(referenceName(App.devices, row.device_id)), badge(row.status), escapeHTML(dateText(row.created_at)), escapeHTML(dateText(row.expires_at)), escapeHTML(dateText(row.completed_at))];
@@ -213,7 +242,7 @@ function render() {
     App.hasMore = (App.page + 1) * App.pageSize < total;
     rows = rows.slice(App.page * App.pageSize, (App.page + 1) * App.pageSize);
   }
-  const empty = App.loading ? 'Đang tải dữ liệu...' : !Api.key ? 'Chưa kết nối backend' : !App.loaded ? 'Không tải được dữ liệu' : 'Không có bản ghi phù hợp';
+  const empty = App.loading ? 'Đang tải dữ liệu...' : !Api.isAuthenticated() ? 'Chưa đăng nhập hệ thống' : !App.loaded ? 'Không tải được dữ liệu' : 'Không có bản ghi phù hợp';
   $('#table-body').innerHTML = rows.length ? rows.map(rowHTML).join('') : `<tr><td colspan="${VIEWS[App.view].headers.length}" class="empty-cell">${empty}</td></tr>`;
   $('#record-summary').textContent = App.loading ? 'Đang tải...' : !App.loaded ? 'Chưa tải dữ liệu' : App.view === 'users' ? `${total.toLocaleString('vi-VN')} người dùng` : `${rows.length} bản ghi trên trang hiện tại`;
   const first = rows.length ? App.page * App.pageSize + 1 : 0;
@@ -246,7 +275,7 @@ function resetEditor() {
   $('#save-button span').textContent = 'Lưu';
 }
 async function openEditor(kind, id = null) {
-  if (!Api.key || App.opening || App.pending) return;
+  if (!Api.isAuthenticated() || App.opening || App.pending) return;
   App.opening = true; updateControls();
   const generation = App.loadVersion;
   try {
@@ -257,7 +286,7 @@ async function openEditor(kind, id = null) {
       try { original = (await Api.request(path)).data; }
       catch (error) { if (kind !== 'embedding' || error.status !== 404) throw error; }
     }
-    if (!Api.key || generation !== App.loadVersion) return;
+    if (!Api.isAuthenticated() || generation !== App.loadVersion) return;
     resetEditor();
     App.editor = { kind, id, original };
     const title = kind === 'embedding' ? `Vector khuôn mặt · ${referenceName(App.users.length ? App.users : App.rows, id, true)}` : `${id ? 'Sửa' : 'Tạo'} ${kind === 'users' ? 'người dùng' : kind === 'devices' ? 'thiết bị' : kind === 'sessions' ? 'phiên đăng ký' : 'sự kiện truy cập'}`;
@@ -309,7 +338,7 @@ async function saveEditor(event) {
   } finally {
     setBusy($('#editor-dialog'), false);
     $('#save-button span').textContent = 'Lưu';
-    if (!$('#editor-dialog').open && Api.key) await loadView(true);
+    if (!$('#editor-dialog').open && Api.isAuthenticated()) await loadView(true);
   }
 }
 
@@ -323,7 +352,7 @@ function showDetail(title, row, kind, withToken = false) {
   const list = document.createElement('dl'); list.className = 'metadata';
   const keys = kind === 'users' ? ['id', 'user_code', 'full_name', 'email', 'phone', 'department', 'role', 'status', 'created_at', 'updated_at'] :
     kind === 'devices' ? ['id', 'device_code', 'name', 'location', 'status', 'settings', 'last_seen_at', 'created_at'] :
-    kind === 'sessions' ? ['id', 'user_id', 'device_id', 'status', 'created_at', 'expires_at', 'completed_at'] : ['id', 'user_id', 'device_id', 'result', 'confidence', 'access_time', 'synced_at'];
+      kind === 'sessions' ? ['id', 'user_id', 'device_id', 'status', 'created_at', 'expires_at', 'completed_at'] : ['id', 'user_id', 'device_id', 'result', 'confidence', 'access_time', 'synced_at'];
   for (const key of keys) {
     const term = document.createElement('dt'); term.textContent = DETAIL_LABELS[key];
     const value = document.createElement('dd');
@@ -342,12 +371,12 @@ function showDetail(title, row, kind, withToken = false) {
   $('#detail-dialog').showModal();
 }
 async function openDetail(id) {
-  if (!Api.key || App.pending || App.opening) return;
+  if (!Api.isAuthenticated() || App.pending || App.opening) return;
   App.opening = true; updateControls();
   const kind = App.view;
   try {
     const { data } = await Api.request(`${VIEWS[kind].path}/${id}`);
-    if (Api.key && kind === App.view) showDetail('Chi tiết', data, kind);
+    if (Api.isAuthenticated() && kind === App.view) showDetail('Chi tiết', data, kind);
   } catch (error) { showError('#page-error', error); }
   finally { App.opening = false; updateControls(); }
 }
@@ -378,9 +407,64 @@ async function submitConfirmation(event) {
   } catch (error) { showError('#confirm-error', error); }
   finally {
     setBusy($('#confirm-dialog'), false);
-    if (!$('#confirm-dialog').open && Api.key) await loadView(true);
+    if (!$('#confirm-dialog').open && Api.isAuthenticated()) await loadView(true);
   }
 }
+
+function openLoginDialog() {
+  $('#login-error').hidden = true;
+  if (!$('#login-username').value) $('#login-username').value = '';
+  if (!$('#login-password').value) $('#login-password').value = '';
+  if (!$('#login-dialog').open) $('#login-dialog').showModal();
+}
+
+$('#login-form').addEventListener('submit', async event => {
+  event.preventDefault();
+  if (App.pending) return;
+  const username = $('#login-username').value.trim();
+  const password = $('#login-password').value;
+  if (!username || !password) {
+    showError('#login-error', new ApiError('Vui lòng nhập tên đăng nhập và mật khẩu.'));
+    return;
+  }
+  setBusy($('#login-dialog'), true);
+  $('#login-error').hidden = true;
+  try {
+    await Api.login(username, password);
+    $('#login-dialog').close();
+    connectionState(true);
+    toast(`Chào mừng ${Api.admin?.full_name || username}, đăng nhập thành công!`);
+  } catch (error) {
+    showError('#login-error', error);
+  } finally {
+    setBusy($('#login-dialog'), false);
+    if (!$('#login-dialog').open && Api.isAuthenticated()) await loadView(true);
+  }
+});
+
+$('#login-button').addEventListener('click', () => openLoginDialog());
+$('#logout-button').addEventListener('click', async () => {
+  await Api.logout();
+  disconnect();
+  toast('Đã đăng xuất khỏi hệ thống.');
+  openLoginDialog();
+});
+
+$('#toggle-password').addEventListener('click', () => {
+  const input = $('#login-password');
+  const isPassword = input.type === 'password';
+  input.type = isPassword ? 'text' : 'password';
+  const icon = $('#toggle-password i');
+  icon.className = isPassword ? 'fa-solid fa-eye-slash' : 'fa-solid fa-eye';
+});
+
+$('#open-apikey-dialog').addEventListener('click', () => {
+  $('#login-dialog').close();
+  $('#connection-error').hidden = true;
+  $('#api-key').value = '';
+  $('#api-origin').value = `${location.origin}/api/v1`;
+  $('#connection-dialog').showModal();
+});
 
 $('#connection-form').addEventListener('submit', async event => {
   event.preventDefault();
@@ -402,7 +486,7 @@ $('#connection-form').addEventListener('submit', async event => {
   } catch (error) { showError('#connection-error', error); }
   finally {
     setBusy($('#connection-dialog'), false);
-    if (!$('#connection-dialog').open && Api.key) await loadView(true);
+    if (!$('#connection-dialog').open && Api.isAuthenticated()) await loadView(true);
   }
 });
 $('#connect-button').addEventListener('click', () => {
@@ -420,7 +504,7 @@ for (const button of $$('.nav-item')) button.addEventListener('click', () => nav
 $('.brand').addEventListener('click', event => { event.preventDefault(); navigate('users'); });
 $('#filters-form').addEventListener('submit', event => {
   event.preventDefault();
-  if (!Api.key || App.pending) return;
+  if (!Api.isAuthenticated() || App.pending) return;
   App.filters = Object.fromEntries([...new FormData(event.target)].map(([name, value]) => [name, String(value).trim()]).filter(([, value]) => value));
   App.page = 0;
   void loadView();
@@ -448,7 +532,7 @@ for (const dialog of $$('dialog')) {
   dialog.addEventListener('close', () => {
     if (dialog.id === 'connection-dialog') $('#api-key').value = '';
     if (dialog.id === 'detail-dialog') { App.token = ''; $('#detail-content').replaceChildren(); }
-    if (!Api.key && !App.pending) { $('#editor-fields').replaceChildren(); App.editor = null; }
+    if (!Api.isAuthenticated() && !App.pending) { $('#editor-fields').replaceChildren(); App.editor = null; }
   });
 }
 $('#copy-token').addEventListener('click', async () => {
@@ -456,4 +540,16 @@ $('#copy-token').addEventListener('click', async () => {
   catch { toast('Không sao chép được. Bạn có thể chọn token để sao chép thủ công.', true); }
 });
 window.addEventListener('pagehide', () => { Api.key = ''; App.token = ''; });
-navigate('users');
+
+async function init() {
+  navigate('users');
+  const hasSession = await Api.checkSession();
+  if (hasSession) {
+    connectionState(true);
+    await loadView(true);
+  } else {
+    connectionState(false);
+    openLoginDialog();
+  }
+}
+void init();

@@ -39,6 +39,6 @@ Sơ đồ luồng tổng quát:
 
 ## Tài liệu
 
-- [Web portal kết nối backend thật](web_test_api/README.md): chạy backend rồi mở `http://127.0.0.1:5000/portal/`.
+- [Web portal kết nối backend thật](web_test_api/README.md): chạy backend rồi mở trực tiếp `http://127.0.0.1:5000/` để đăng nhập quản trị.
 - [Backend Python và API](backend/README.md)
 - [Tài liệu kiến trúc hệ thống](docs/face_recognition_access_control_architecture.md)

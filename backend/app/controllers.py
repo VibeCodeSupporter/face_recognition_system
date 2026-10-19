@@ -5,12 +5,45 @@ from fastapi import APIRouter, Query, Request, Response, Security
 from fastapi.security import APIKeyHeader
 
 from app.dto.access_logs import AccessLogCreate, AccessLogQuery
+from app.dto.auth import LoginRequest
 from app.dto.devices import DeviceCreate, DevicePatch, DeviceQuery
 from app.dto.face_embeddings import FaceEmbeddingPut
 from app.dto.registration_sessions import SessionCreate, SessionPatch, SessionQuery
 from app.dto.users import UserCreate, UserPatch, UserQuery
 
 router = APIRouter(prefix="/api/v1", dependencies=[Security(APIKeyHeader(name="x-api-key", auto_error=False))])
+
+
+#======================================AUTH=========================================
+
+@router.post("/auth/login", tags=["Auth"])
+def login(request: Request, body: LoginRequest):
+    return {"data": request.app.state.services.auth.login(body.username, body.password)}
+
+
+@router.get("/auth/me", tags=["Auth"])
+def get_me(request: Request):
+    admin = getattr(request.state, "admin", None)
+    if not admin:
+        auth_header = request.headers.get("authorization", "")
+        if auth_header.lower().startswith("bearer "):
+            token = auth_header[7:].strip()
+            admin = request.app.state.services.auth.verify_token(token)
+    if not admin:
+        from app.errors import AppError
+        raise AppError(401, "UNAUTHORIZED", "Yêu cầu đăng nhập quản trị viên.")
+    return {
+        "data": {
+            "username": admin.get("sub", "admin"),
+            "full_name": admin.get("full_name", "Quản trị viên"),
+            "role": admin.get("role", "admin"),
+        }
+    }
+
+
+@router.post("/auth/logout", tags=["Auth"])
+def logout():
+    return {"data": {"message": "Đã đăng xuất thành công."}}
 
 
 @router.get("/health", tags=["Health"])

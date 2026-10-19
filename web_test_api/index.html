@@ -26,9 +26,15 @@
     <header class="topbar">
       <span class="topbar-label">FaceAccess / <span id="breadcrumb">Người dùng</span></span>
       <div class="topbar-actions">
-        <span id="connection-status" class="connection-status">Chưa kết nối</span>
-        <button id="connect-button" class="button secondary"><i class="fa-solid fa-key" aria-hidden="true"></i><span>Kết nối</span></button>
-        <button id="disconnect-button" class="icon-button" title="Ngắt kết nối" aria-label="Ngắt kết nối" hidden><i class="fa-solid fa-right-from-bracket" aria-hidden="true"></i></button>
+        <span id="connection-status" class="connection-status">Chưa đăng nhập</span>
+        <div id="admin-badge" class="admin-badge" hidden>
+          <span class="admin-avatar"><i class="fa-solid fa-user-shield" aria-hidden="true"></i></span>
+          <span id="admin-name" class="admin-name">Admin</span>
+        </div>
+        <button id="login-button" class="button primary"><i class="fa-solid fa-right-to-bracket" aria-hidden="true"></i><span>Đăng nhập Admin</span></button>
+        <button id="logout-button" class="button secondary" title="Đăng xuất" aria-label="Đăng xuất" hidden><i class="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i><span>Đăng xuất</span></button>
+        <button id="connect-button" class="button secondary dev-button" title="Kết nối qua Backend API Key" aria-label="Kết nối API Key"><i class="fa-solid fa-key" aria-hidden="true"></i><span>API Key</span></button>
+        <button id="disconnect-button" class="icon-button" title="Ngắt kết nối" aria-label="Ngắt kết nối" hidden><i class="fa-solid fa-power-off" aria-hidden="true"></i></button>
       </div>
     </header>
     <main id="main-content">
@@ -60,6 +66,42 @@
       </footer>
     </main>
   </div>
+  <dialog id="login-dialog" class="auth-dialog" aria-labelledby="login-title">
+    <form id="login-form" class="auth-card">
+      <div class="auth-header">
+        <div class="auth-logo"><i class="fa-solid fa-shield-halved" aria-hidden="true"></i></div>
+        <h2 id="login-title">Đăng nhập Quản trị</h2>
+        <p class="auth-subtitle">FaceAccess - Hệ thống Kiểm soát Ra vào &amp; Nhận diện Khuôn mặt</p>
+      </div>
+      <div class="auth-content">
+        <div class="field">
+          <label for="login-username"><i class="fa-solid fa-user" aria-hidden="true"></i> Tên đăng nhập</label>
+          <input id="login-username" type="text" required placeholder="admin" autocomplete="username" spellcheck="false">
+        </div>
+        <div class="field">
+          <label for="login-password"><i class="fa-solid fa-lock" aria-hidden="true"></i> Mật khẩu</label>
+          <div class="password-wrapper">
+            <input id="login-password" type="password" required placeholder="Nhập mật khẩu quản trị" autocomplete="current-password">
+            <button type="button" id="toggle-password" class="icon-button subtle password-toggle" title="Hiện hoặc ẩn mật khẩu" aria-label="Hiện mật khẩu"><i class="fa-solid fa-eye" aria-hidden="true"></i></button>
+          </div>
+        </div>
+        <div class="auth-hint">
+          <i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+          <span>Tài khoản mặc định: <strong>admin</strong> / Mật khẩu: <strong>admin123</strong></span>
+        </div>
+        <div id="login-error" class="form-error" role="alert" hidden></div>
+      </div>
+      <div class="auth-footer">
+        <button id="login-submit-btn" type="submit" class="button primary auth-submit-btn">
+          <i class="fa-solid fa-right-to-bracket" aria-hidden="true"></i>
+          <span>Đăng nhập hệ thống</span>
+        </button>
+        <div class="auth-switch-link">
+          <button type="button" id="open-apikey-dialog" class="text-link"><i class="fa-solid fa-code" aria-hidden="true"></i> Kết nối qua Backend API Key (Dành cho Developer)</button>
+        </div>
+      </div>
+    </form>
+  </dialog>
   <dialog id="connection-dialog" aria-labelledby="connection-title">
     <form id="connection-form">
       <div class="dialog-heading"><h2 id="connection-title">Kết nối backend</h2><button type="button" class="icon-button" data-close title="Đóng" aria-label="Đóng"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button></div>

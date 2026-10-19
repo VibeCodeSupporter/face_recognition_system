@@ -59,17 +59,18 @@ async function run() {
     await page.goto(`${baseURL}portal/`, { waitUntil: 'networkidle' });
     assert.equal(await page.locator('h1').textContent(), 'Người dùng');
     assert.equal(await page.locator('#create-button').isDisabled(), true);
-    await page.locator('#connect-button').click();
-    await page.locator('#api-key').fill('invalid_key_'.repeat(4));
-    await responseAfter('GET', '/health', () => page.locator('#connection-form button[type="submit"]').click(), 401);
-    assert.equal(await page.locator('#connection-error').isVisible(), true);
+    // Test invalid admin credentials
+    await page.locator('#login-username').fill('admin');
+    await page.locator('#login-password').fill('wrong_password_test');
+    await responseAfter('POST', '/auth/login', () => page.locator('#login-form button[type="submit"]').click(), 401);
+    assert.equal(await page.locator('#login-error').isVisible(), true);
     assert.equal(await page.locator('#create-button').isDisabled(), true);
-    await page.locator('#api-key').fill(key);
-    await responseAfter('GET', '/health', () => page.locator('#connection-form button[type="submit"]').click(), 200);
+
+    // Test valid admin login
+    await page.locator('#login-password').fill(process.env.ADMIN_PASSWORD || 'admin123');
+    await responseAfter('POST', '/auth/login', () => page.locator('#login-form button[type="submit"]').click(), 200);
     await waitLoaded();
-    assert.equal(await page.locator('#connection-status').textContent(), 'Đã kết nối');
-    assert.equal(await page.locator('#api-key').inputValue(), '');
-    assert.equal(await page.evaluate(secret => Object.values(localStorage).concat(Object.values(sessionStorage), [document.cookie]).some(value => String(value).includes(secret)), key), false);
+    assert.equal(await page.locator('#connection-status').textContent(), 'Đã đăng nhập');
     assert.equal(requests.some(request => request.url.includes('key=')), false);
 
     if (!fixture) {

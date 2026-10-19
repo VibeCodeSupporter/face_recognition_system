@@ -1,3 +1,4 @@
+from dns.rdtypes.ANY import HINFO
 import ipaddress
 import os
 import re
@@ -23,6 +24,10 @@ class Settings:
     port: int = 5000
     timeout_ms: int = 10000
     app_env: str = "development"
+    frontend_dir: str = "web_test_api"
+    admin_username: str = None
+    admin_password: str = field(default=None, repr=False)
+    jwt_secret: str = field(default="", repr=False)
 
 
 def load_settings(*, require_api_key: bool = True) -> Settings:
@@ -58,4 +63,11 @@ def load_settings(*, require_api_key: bool = True) -> Settings:
             raise ValueError
     except ValueError:
         raise ConfigurationError("HOST must be an IP address, PORT 1..65535, and DATABASE_REQUEST_TIMEOUT_MS 100..60000.") from None
-    return Settings(f"{url.scheme}://{url.netloc}", secret, api_key, host, port, timeout, environment)
+    frontend_dir = os.getenv("FRONTEND_DIR", "web_test_api").strip() or "web_test_api"
+    admin_username = os.getenv("ADMIN_USERNAME", "admin").strip() or "admin"
+    admin_password = os.getenv("ADMIN_PASSWORD", "admin123").strip() or "admin123"
+    jwt_secret = os.getenv("JWT_SECRET", "").strip() or api_key
+    return Settings(
+        f"{url.scheme}://{url.netloc}", secret, api_key, host, port, timeout, environment,
+        frontend_dir, admin_username, admin_password, jwt_secret
+    )

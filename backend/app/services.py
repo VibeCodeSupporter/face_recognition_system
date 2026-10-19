@@ -115,10 +115,99 @@ class AccessLogService:
         return existing, False
 
 
+class AuthService:
+    def __init__(self, settings=None):
+        from app.config import BACKEND_ROOT
+        self.settings = settings
+        self.admin_file = BACKEND_ROOT / "data" / "admins.json"
+        self._ensure_admin_dir()
+
+    def _ensure_admin_dir(self):
+        try:
+            self.admin_file.parent.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+
+    def _get_admins(self) -> dict:
+        admins = {}
+        if self.settings:
+            admins[self.settings.admin_username] = {
+                "password": self.settings.admin_password,
+                "full_name": "Quản trị viên Hệ thống",
+                "role": "admin",
+            }
+        else:
+            admins["admin"] = {
+                "password": "admin123",
+                "full_name": "Quản trị viên Hệ thống",
+                "role": "admin",
+            }
+        if self.admin_file.is_file():
+            try:
+                import json
+                with open(self.admin_file, "r", encoding="utf-8") as f:
+                    stored = json.load(f)
+                    if isinstance(stored, dict):
+                        admins.update(stored)
+            except Exception:
+                pass
+        return admins
+
+    def _get_secret(self) -> str:
+        if self.settings:
+            return self.settings.jwt_secret or self.settings.api_key or "default_jwt_secret_key_32_chars_long"
+        return "default_jwt_secret_key_32_chars_long"
+
+    def login(self, username: str, password: str) -> dict:
+        import hmac
+        import time
+        import jwt
+
+        admins = self._get_admins()
+        user_data = admins.get(username)
+        if not user_data:
+            raise AppError(401, "INVALID_CREDENTIALS", "Tên đăng nhập hoặc mật khẩu không chính xác.")
+
+        expected_pw = user_data["password"]
+        if not hmac.compare_digest(password, expected_pw):
+            raise AppError(401, "INVALID_CREDENTIALS", "Tên đăng nhập hoặc mật khẩu không chính xác.")
+
+        now = int(time.time())
+        exp = now + 86400 * 7
+        secret = self._get_secret()
+        payload = {
+            "sub": username,
+            "role": user_data.get("role", "admin"),
+            "full_name": user_data.get("full_name", "Quản trị viên"),
+            "iat": now,
+            "exp": exp,
+        }
+        token = jwt.encode(payload, secret, algorithm="HS256")
+        return {
+            "token": token,
+            "admin": {
+                "username": username,
+                "full_name": user_data.get("full_name", "Quản trị viên"),
+                "role": user_data.get("role", "admin"),
+            },
+        }
+
+    def verify_token(self, token: str) -> dict:
+        import jwt
+        secret = self._get_secret()
+        try:
+            return jwt.decode(token, secret, algorithms=["HS256"])
+        except jwt.ExpiredSignatureError:
+            raise AppError(401, "UNAUTHORIZED", "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.") from None
+        except Exception:
+            raise AppError(401, "UNAUTHORIZED", "Token xác thực không hợp lệ.") from None
+
+
 class Services:
-    def __init__(self, repositories: Repositories):
+    def __init__(self, repositories: Repositories, settings=None):
         self.users = CRUDService(repositories.users)
         self.devices = DeviceService(repositories.devices)
         self.embeddings = EmbeddingService(repositories)
         self.sessions = SessionService(repositories)
         self.logs = AccessLogService(repositories.logs)
+        self.auth = AuthService(settings)

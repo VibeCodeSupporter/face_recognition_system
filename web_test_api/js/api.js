@@ -27,13 +27,20 @@ const ERROR_MESSAGES = {
   INTERNAL_ERROR: 'Backend gặp lỗi. Hãy kiểm tra bằng mã request bên dưới.',
   INVALID_JSON: 'Nội dung JSON không hợp lệ.',
   VALIDATION_ERROR: 'Dữ liệu nhập chưa hợp lệ. Kiểm tra các trường được đánh dấu.',
+  INVALID_CREDENTIALS: 'Tên đăng nhập hoặc mật khẩu không chính xác. Vui lòng kiểm tra lại.',
 };
 
 const Api = {
   key: '',
+  token: '',
+  admin: null,
   onUnauthorized: () => {},
-  async request(path, { method = 'GET', body, key = this.key, signal } = {}) {
-    if (!key) throw new ApiError(ERROR_MESSAGES.UNAUTHORIZED, 401, 'UNAUTHORIZED');
+  isAuthenticated() {
+    return Boolean(this.token || this.key);
+  },
+  async request(path, { method = 'GET', body, key = this.key, token = this.token, signal } = {}) {
+    const isPublic = path === '/auth/login';
+    if (!isPublic && !key && !token) throw new ApiError(ERROR_MESSAGES.UNAUTHORIZED, 401, 'UNAUTHORIZED');
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 30000);
     const abort = () => controller.abort();
@@ -44,9 +51,17 @@ const Api = {
       if (encoded && new TextEncoder().encode(encoded).length > 128 * 1024) {
         throw new ApiError(ERROR_MESSAGES.BODY_TOO_LARGE, 413, 'BODY_TOO_LARGE');
       }
+      const headers = {
+        ...(encoded === undefined ? {} : { 'Content-Type': 'application/json' }),
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      } else if (key) {
+        headers['x-api-key'] = key;
+      }
       const response = await fetch(`/api/v1${path}`, {
         method, signal: controller.signal, cache: 'no-store', credentials: 'omit', redirect: 'error',
-        headers: { 'x-api-key': key, ...(encoded === undefined ? {} : { 'Content-Type': 'application/json' }) },
+        headers,
         body: encoded,
       });
       const text = response.status === 204 ? '' : await response.text();
@@ -55,8 +70,8 @@ const Api = {
       catch { throw new ApiError('Backend trả dữ liệu không hợp lệ. Kiểm tra địa chỉ và proxy.', response.status, 'INVALID_RESPONSE'); }
       if (!response.ok) {
         const error = payload?.error || {};
-        if (response.status === 401 && key === this.key) this.onUnauthorized();
-        throw new ApiError(ERROR_MESSAGES[error.code] || `Request thất bại (HTTP ${response.status}).`,
+        if (response.status === 401 && !isPublic) this.onUnauthorized();
+        throw new ApiError(ERROR_MESSAGES[error.code] || error.message || `Request thất bại (HTTP ${response.status}).`,
           response.status, error.code || 'HTTP_ERROR', error.details || payload?.detail || [], error.request_id || '');
       }
       if (response.status !== 204 && (!payload || !Object.hasOwn(payload, 'data'))) {
@@ -70,6 +85,50 @@ const Api = {
     } finally {
       clearTimeout(timer);
       signal?.removeEventListener('abort', abort);
+    }
+  },
+  async login(username, password) {
+    const { data } = await this.request('/auth/login', {
+      method: 'POST',
+      body: { username, password },
+    });
+    this.token = data.token;
+    this.admin = data.admin;
+    try {
+      sessionStorage.setItem('faceaccess_token', data.token);
+      sessionStorage.setItem('faceaccess_admin', JSON.stringify(data.admin));
+    } catch (_) {}
+    return data;
+  },
+  async logout() {
+    try {
+      if (this.token) await this.request('/auth/logout', { method: 'POST' });
+    } catch (_) {}
+    finally {
+      this.token = '';
+      this.admin = null;
+      try {
+        sessionStorage.removeItem('faceaccess_token');
+        sessionStorage.removeItem('faceaccess_admin');
+      } catch (_) {}
+    }
+  },
+  async checkSession() {
+    try {
+      const storedToken = sessionStorage.getItem('faceaccess_token');
+      if (!storedToken) return false;
+      const { data } = await this.request('/auth/me', { token: storedToken });
+      this.token = storedToken;
+      this.admin = data;
+      return true;
+    } catch (_) {
+      this.token = '';
+      this.admin = null;
+      try {
+        sessionStorage.removeItem('faceaccess_token');
+        sessionStorage.removeItem('faceaccess_admin');
+      } catch (_) {}
+      return false;
     }
   },
 };

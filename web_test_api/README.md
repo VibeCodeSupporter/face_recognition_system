@@ -2,19 +2,23 @@
 
 Website nay dung API Python/FastAPI va Supabase that. Khong co mock, dang nhap email/password, camera gia lap hoac dong bo gia.
 
-## Chay local
+## Chạy local
 
-Trong thu muc `backend`:
+Trong thư mục `backend`:
 
 ```powershell
 .\.venv\Scripts\python.exe run.py
 ```
 
-Mo `http://127.0.0.1:5000/portal/`, bam **Ket noi**, nhap gia tri `BACKEND_API_KEY` trong `backend/.env`. Khong nhap `SUPABASE_SECRET_KEY`.
+Mở trình duyệt trực tiếp tại `http://127.0.0.1:5000/` (hoặc `http://localhost:5000/`).
 
-Portal va API cung origin. Khong can CORS, npm, frontend build hay web server rieng. Neu backend dang chay truoc khi them portal, khoi dong lai backend.
+Website sẽ hiển thị cửa sổ **Đăng nhập Quản trị viên**:
+- **Tên đăng nhập mặc định:** `admin`
+- **Mật khẩu mặc định:** `admin123`
+*(Có thể tùy chỉnh tài khoản trong file `backend/.env` qua `ADMIN_USERNAME` và `ADMIN_PASSWORD`)*
 
-Key chi luu trong bo nho trang, khong luu localStorage/sessionStorage/cookie. Refresh trang hoac ngat ket noi se xoa key. Day la portal quan tri noi bo, khong phai trang dang nhap nguoi dung. Khong dua key quan tri cho nhan vien, khong public portal/API khi chua co phan quyen phu hop va HTTPS.
+Sau khi đăng nhập thành công, bạn có toàn quyền quản trị người dùng, thiết bị, phiên đăng ký và lịch sử ra vào mà không cần chạy server riêng hay nhập chuỗi API key phức tạp.
+(Nếu là lập trình viên muốn dùng trực tiếp API key, có thể bấm liên kết "Kết nối qua Backend API Key").
 
 ## API duoc su dung
 
