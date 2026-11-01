@@ -1,5 +1,7 @@
 # Dependencies (ReactJS / Node)
 web_portal/node_modules/
+__pycache__/
+*.pyc
 # Environment variables
 .env
 .venv
@@ -21,5 +23,15 @@ htmlcov/
 # git reset --hard HEAD~1
 # git push --force-with-lease origin <ten_nhanh>
 
+# Attendance Device App local configuration
+attendance_app/.env
 
 
+attendance_app/.venv
+attendance_app/weights/
+attendance_app/data/faces.sqlite3*
+attendance_app/data/faces.faiss*
+attendance_app/data/faces.tmp
+attendance_app/data/enrollments/
+attendance_app/data/fas_inputs/
+attendance_app/data/aligned_inputs/
