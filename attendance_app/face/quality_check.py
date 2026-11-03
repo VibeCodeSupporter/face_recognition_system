@@ -45,16 +45,23 @@ class FaceQualityChecker:
     MAX_YAW_DEGREES = 35.0
     MAX_PITCH_DEGREES = 35.0
     MAX_ROLL_DEGREES = 30.0
-    STABLE_FRAME_COUNT = 5
+    STABLE_FRAME_COUNT = 4
+    FRONT_MAX_YAW = 22.0
+    FRONT_MAX_PITCH = 27.0
+    TURN_MIN_ANGLE = 9.0
+    TURN_MAX_ANGLE = 40.0
+    PITCH_MIN_ANGLE = 5.0
+    PITCH_MAX_ANGLE = 25.0
 
-    # Approximate 3-D facial landmarks in detector order: eyes, nose, mouth corners.
+    # Approximate 3-D landmarks in detector order. Image coordinates grow
+    # downward, so the eye row is above the nose and mouth row below it.
     _MODEL_POINTS = np.array(
         [
-            [-30.0, 30.0, -20.0],
-            [30.0, 30.0, -20.0],
+            [-30.0, -30.0, -20.0],
+            [30.0, -30.0, -20.0],
             [0.0, 0.0, 0.0],
-            [-25.0, -30.0, -15.0],
-            [25.0, -30.0, -15.0],
+            [-25.0, 30.0, -15.0],
+            [25.0, 30.0, -15.0],
         ],
         dtype=np.float64,
     )
@@ -245,14 +252,66 @@ class FaceQualityChecker:
         sy = math.sqrt(rotation[0, 0] ** 2 + rotation[1, 0] ** 2)
         singular = sy < 1e-6
         if singular:
-            pitch = math.atan2(-rotation[2, 0], sy)
-            yaw = math.atan2(-rotation[1, 2], rotation[1, 1])
+            yaw = math.atan2(-rotation[2, 0], sy)
+            pitch = math.atan2(-rotation[1, 2], rotation[1, 1])
             roll = 0.0
         else:
-            pitch = math.atan2(-rotation[2, 0], sy)
-            yaw = math.atan2(rotation[1, 0], rotation[0, 0])
-            roll = math.atan2(rotation[2, 1], rotation[2, 2])
+            # Decompose the estimated rotation as yaw (vertical axis), pitch
+            # (horizontal axis), then roll (camera-facing axis). The previous
+            # extraction mislabeled these components, which made turn guidance
+            # react to head tilt instead of left/right rotation.
+            yaw = math.atan2(-rotation[2, 0], sy)
+            pitch = math.atan2(rotation[2, 1], rotation[2, 2])
+            roll = math.atan2(rotation[1, 0], rotation[0, 0])
+        # Normalize this model's PnP sign to the UI convention: looking down
+        # is positive pitch and looking up is negative pitch.
+        pitch = -pitch
         return tuple(math.degrees(angle) for angle in (yaw, pitch, roll))
+
+    @classmethod
+    def estimate_pose(
+        cls,
+        landmarks: tuple[tuple[float, float, float], ...],
+        frame_width: int,
+        frame_height: int,
+    ) -> tuple[float, float, float] | None:
+        """Expose the same landmark pose estimate used by quality evaluation."""
+        return cls._estimate_pose(landmarks, frame_width, frame_height)
+
+    @classmethod
+    def matches_capture_pose(
+        cls,
+        pose_key: str,
+        pose: tuple[float, float, float] | None,
+    ) -> tuple[bool, str]:
+        """Check the requested enrollment direction before costly processing."""
+        if pose is None:
+            return False, "Chưa xác định được góc mặt, vui lòng nhìn rõ vào camera."
+
+        yaw, pitch, _ = pose
+        if pose_key == "front":
+            if abs(yaw) > cls.FRONT_MAX_YAW or abs(pitch) > cls.FRONT_MAX_PITCH:
+                return False, "Vui lòng nhìn thẳng vào camera, giữ đầu không nghiêng hoặc cúi/ngửa."
+            return True, "Nhìn thẳng vào camera."
+        if pose_key in {"left", "right"}:
+            direction = 1.0 if pose_key == "left" else -1.0
+            directed_yaw = yaw * direction
+            side = "trái" if pose_key == "left" else "phải"
+            if directed_yaw < cls.TURN_MIN_ANGLE:
+                return False, f"Quay nhẹ sang {side}."
+            if directed_yaw > cls.TURN_MAX_ANGLE:
+                return False, "Bạn quay hơi nhiều, quay lại nhẹ một chút."
+            return abs(pitch) <= 28.0, "Giữ đầu tự nhiên, chỉ quay mặt sang bên."
+
+        # With this pose decomposition, looking down is positive pitch and
+        # looking up is negative pitch.
+        direction = 1.0 if pose_key == "down" else -1.0
+        directed_pitch = pitch * direction
+        if directed_pitch < cls.PITCH_MIN_ANGLE:
+            return False, "Cúi nhẹ xuống." if pose_key == "down" else "Ngửa nhẹ lên."
+        if directed_pitch > cls.PITCH_MAX_ANGLE:
+            return False, "Góc hơi nhiều, trở lại nhẹ một chút."
+        return abs(yaw) <= 28.0, "Giữ mặt hướng về trước, chỉ thay đổi nhẹ góc lên/xuống."
 
     @staticmethod
     def _guidance(issues: list[str], stable: bool) -> str:

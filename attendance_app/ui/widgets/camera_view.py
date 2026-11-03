@@ -15,6 +15,8 @@ class CameraView(QLabel):
         super().__init__(parent)
         self._image = None
         self._detections: list[FaceDetection] = []
+        self._spoof_detected = False
+        self._spoof_track_id: int | None = None
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setMinimumSize(640, 360)
         self.setText("Đang khởi động camera…")
@@ -26,6 +28,11 @@ class CameraView(QLabel):
 
     def set_detections(self, detections: list[FaceDetection]) -> None:
         self._detections = detections
+        self.update()
+
+    def set_spoof_state(self, spoof_detected: bool, track_id: int | None = None) -> None:
+        self._spoof_detected = spoof_detected
+        self._spoof_track_id = track_id if spoof_detected else None
         self.update()
 
     def captured_image(self):
@@ -77,7 +84,13 @@ class CameraView(QLabel):
                 (x2 - x1) * scale_x,
                 (y2 - y1) * scale_y,
             )
-            painter.setPen(QPen(QColor("#58a6ff"), 2))
+            spoofed = self._spoof_detected and (
+                self._spoof_track_id is None
+                or detection.track_id is None
+                or detection.track_id == self._spoof_track_id
+            )
+            box_color = QColor("#ff4d4f") if spoofed else QColor("#58a6ff")
+            painter.setPen(QPen(box_color, 3 if spoofed else 2))
             painter.drawRect(box)
             track_label = (
                 f"Face #{detection.track_id}"
@@ -87,7 +100,7 @@ class CameraView(QLabel):
             painter.drawText(
                 box.adjusted(4, 3, -3, -3),
                 Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft,
-                f"{track_label} · {detection.confidence:.2f}",
+                f"{'SPOOF · ' if spoofed else ''}{track_label} · {detection.confidence:.2f}",
             )
             painter.setPen(QPen(QColor("#ff6b6b"), 5))
             for point_x, point_y, visibility in detection.landmarks:

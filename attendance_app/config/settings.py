@@ -34,6 +34,9 @@ if (
 FACE_MATCH_THRESHOLD = float(os.getenv("FACE_MATCH_THRESHOLD", "1.60"))
 
 FACE_ANTISPOOF_NAME = os.getenv("FACE_ANTISPOOF", "mini_fas_onnx")
+FACE_ANTISPOOF_LOGIT_THRESHOLD = float(
+    os.getenv("FACE_ANTISPOOF_LOGIT_THRESHOLD", "0.0")
+)
 _antispoof_model_path = os.getenv("FACE_ANTISPOOF_MODEL", "").strip()
 FACE_ANTISPOOF_MODEL_PATH = (
     Path(_antispoof_model_path).expanduser() if _antispoof_model_path else None

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 from pathlib import Path
 from typing import Protocol
 
@@ -10,6 +11,8 @@ import numpy as np
 
 from config.settings import APP_ROOT, FACE_MATCH_THRESHOLD
 from storage.database import FaceDatabase
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -28,11 +31,17 @@ class VectorStore(Protocol):
         samples: list[tuple[str, np.ndarray]],
     ) -> None: ...
 
+    def employee_exists(self, employee_id: str) -> bool: ...
+
+    def remove_employee(self, employee_id: str) -> bool: ...
+
     def search(self, vector: np.ndarray) -> FaceMatch | None: ...
+
+    def rebuild(self) -> int: ...
 
 
 class FaissVectorStore:
-    """Exact squared-L2 search over normalized embeddings, persisted offline."""
+    """Exact squared-L2 search with an incrementally maintained ID-mapped index."""
 
     DIMENSION = 512
     DEFAULT_THRESHOLD = FACE_MATCH_THRESHOLD
@@ -55,9 +64,12 @@ class FaissVectorStore:
         self.index_path = self.index_path.expanduser().resolve()
         self.index_path.parent.mkdir(parents=True, exist_ok=True)
         self.threshold = float(threshold)
-        self.index = faiss.IndexFlatL2(self.DIMENSION)
-        self._metadata: list[tuple[str, str, str]] = []
-        self._rebuild()
+        self.index = self._new_index()
+        self._last_save_succeeded = False
+        self._load_or_rebuild()
+
+    def _new_index(self):
+        return self._faiss.IndexIDMap(self._faiss.IndexFlatL2(self.DIMENSION))
 
     def add_employee(
         self,
@@ -98,7 +110,60 @@ class FaissVectorStore:
                     for pose, vector in prepared
                 ],
             )
-        self._rebuild()
+            self._increment_data_revision()
+
+        rows = self.database.connection.execute(
+            """SELECT id, pose FROM face_embeddings
+               WHERE employee_id = ? ORDER BY id""",
+            (employee_id,),
+        ).fetchall()
+        vectors_by_pose = {pose: vector for pose, vector in prepared}
+        ids = np.asarray([row_id for row_id, _ in rows], dtype=np.int64)
+        vectors = np.ascontiguousarray(
+            [vectors_by_pose[pose] for _, pose in rows], dtype=np.float32
+        )
+        try:
+            self.index.add_with_ids(vectors, ids)
+            self._save_index()
+        except Exception:
+            # SQLite is the source of truth. Restore a usable in-memory index
+            # if an incremental FAISS update fails after the DB transaction.
+            logger.exception("Incremental FAISS add failed; rebuilding from SQLite")
+            self._rebuild()
+
+    def employee_exists(self, employee_id: str) -> bool:
+        row = self.database.connection.execute(
+            "SELECT 1 FROM employees WHERE employee_id = ?", (employee_id.strip(),)
+        ).fetchone()
+        return row is not None
+
+    def remove_employee(self, employee_id: str) -> bool:
+        """Delete an employee and remove only that employee's vectors."""
+        employee_id = employee_id.strip()
+        with self.database.connection:
+            exists = self.database.connection.execute(
+                "SELECT 1 FROM employees WHERE employee_id = ?", (employee_id,)
+            ).fetchone()
+            if exists is None:
+                return False
+            ids = self.database.connection.execute(
+                "SELECT id FROM face_embeddings WHERE employee_id = ? ORDER BY id",
+                (employee_id,),
+            ).fetchall()
+            self.database.connection.execute(
+                "DELETE FROM employees WHERE employee_id = ?", (employee_id,)
+            )
+            self._increment_data_revision()
+
+        vector_ids = np.asarray([row[0] for row in ids], dtype=np.int64)
+        try:
+            if vector_ids.size:
+                self.index.remove_ids(vector_ids)
+            self._save_index()
+        except Exception:
+            logger.exception("Incremental FAISS delete failed; rebuilding from SQLite")
+            self._rebuild()
+        return True
 
     def search(self, vector: np.ndarray) -> FaceMatch | None:
         if self.index.ntotal == 0:
@@ -109,38 +174,111 @@ class FaissVectorStore:
         norm = float(np.linalg.norm(query))
         if norm <= 1e-12:
             raise ValueError("Search vector cannot be zero")
-        distances, indices = self.index.search(query / norm, 1)
+        distances, ids = self.index.search(query / norm, 1)
         distance = float(distances[0, 0])
-        index_position = int(indices[0, 0])
-        if index_position < 0 or distance > self.threshold:
+        vector_id = int(ids[0, 0])
+        if vector_id < 0 or distance > self.threshold:
             return None
-        employee_id, name, pose = self._metadata[index_position]
+        row = self.database.connection.execute(
+            """SELECT e.employee_id, p.name, e.pose
+               FROM face_embeddings e JOIN employees p USING(employee_id)
+               WHERE e.id = ?""",
+            (vector_id,),
+        ).fetchone()
+        if row is None:
+            # This can happen if another process changed SQLite directly.
+            self._load_or_rebuild()
+            return None
+        employee_id, name, pose = row
         return FaceMatch(employee_id, name, distance, pose)
 
-    def _rebuild(self) -> None:
+    def rebuild(self) -> int:
+        """Recreate the persisted index from SQLite for manual maintenance."""
+        count = self._rebuild()
+        if not self._last_save_succeeded:
+            raise RuntimeError("Could not persist the rebuilt FAISS index")
+        return count
+
+    def _load_or_rebuild(self) -> None:
+        if not self.index_path.is_file() or not self._index_revisions_match():
+            self._rebuild()
+            return
+
+        try:
+            loaded = self._faiss.read_index(str(self.index_path))
+            if not isinstance(loaded, self._faiss.IndexIDMap):
+                raise ValueError("Stored FAISS index has no external IDs")
+            if loaded.d != self.DIMENSION:
+                raise ValueError(f"Stored FAISS index has dimension {loaded.d}")
+            stored_ids = np.asarray(self._faiss.vector_to_array(loaded.id_map))
+            database_ids = self._valid_vector_ids()
+            if loaded.ntotal != len(database_ids) or set(stored_ids.tolist()) != database_ids:
+                raise ValueError("Stored FAISS IDs do not match SQLite embeddings")
+            self.index = loaded
+        except Exception:
+            logger.exception("Stored FAISS index is invalid; rebuilding from SQLite")
+            self._rebuild()
+
+    def _valid_vector_ids(self) -> set[int]:
         rows = self.database.connection.execute(
-            """SELECT e.employee_id, p.name, e.pose, e.vector, e.dimension
+            """SELECT e.id FROM face_embeddings e
+               JOIN employees p USING(employee_id)
+               WHERE e.dimension = ? AND length(e.vector) = ?
+               ORDER BY e.id""",
+            (self.DIMENSION, self.DIMENSION * np.dtype(np.float32).itemsize),
+        ).fetchall()
+        return {int(row[0]) for row in rows}
+
+    def _increment_data_revision(self) -> None:
+        self.database.connection.execute(
+            "UPDATE vector_index_state SET data_revision = data_revision + 1 WHERE id = 1"
+        )
+
+    def _index_revisions_match(self) -> bool:
+        row = self.database.connection.execute(
+            "SELECT data_revision, index_revision FROM vector_index_state WHERE id = 1"
+        ).fetchone()
+        return row is not None and int(row[0]) == int(row[1])
+
+    def _save_index(self) -> bool:
+        temporary_index = self.index_path.with_suffix(".tmp")
+        try:
+            self._faiss.write_index(self.index, str(temporary_index))
+            temporary_index.replace(self.index_path)
+            with self.database.connection:
+                self.database.connection.execute(
+                    """UPDATE vector_index_state
+                       SET index_revision = data_revision WHERE id = 1"""
+                )
+            self._last_save_succeeded = True
+            return True
+        except Exception:
+            temporary_index.unlink(missing_ok=True)
+            self._last_save_succeeded = False
+            logger.exception("Could not persist FAISS index; it will be rebuilt on startup")
+            return False
+
+    def _rebuild(self) -> int:
+        rows = self.database.connection.execute(
+            """SELECT e.id, e.employee_id, p.name, e.pose, e.vector, e.dimension
                FROM face_embeddings e JOIN employees p USING(employee_id)
                ORDER BY e.id"""
         ).fetchall()
-        self.index = self._faiss.IndexFlatL2(self.DIMENSION)
-        self._metadata = []
+        self.index = self._new_index()
         vectors: list[np.ndarray] = []
-        for employee_id, name, pose, raw_vector, dimension in rows:
+        vector_ids: list[int] = []
+        for vector_id, _employee_id, _name, _pose, raw_vector, dimension in rows:
             if dimension != self.DIMENSION:
                 continue
             vector = np.frombuffer(raw_vector, dtype=np.float32)
             if vector.size != self.DIMENSION or not np.isfinite(vector).all():
                 continue
             vectors.append(vector.copy())
-            self._metadata.append((employee_id, name, pose))
+            vector_ids.append(int(vector_id))
         if vectors:
-            self.index.add(np.ascontiguousarray(vectors, dtype=np.float32))
-        temporary_index = self.index_path.with_suffix(".tmp")
-        try:
-            self._faiss.write_index(self.index, str(temporary_index))
-            temporary_index.replace(self.index_path)
-        except (OSError, RuntimeError):
-            # SQLite stores the source vectors; the FAISS file can be rebuilt
-            # on next startup if persisting this local index fails.
-            temporary_index.unlink(missing_ok=True)
+            self.index.add_with_ids(
+                np.ascontiguousarray(vectors, dtype=np.float32),
+                np.asarray(vector_ids, dtype=np.int64),
+            )
+        self._save_index()
+        return int(self.index.ntotal)

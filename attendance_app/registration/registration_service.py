@@ -23,6 +23,13 @@ class RegistrationService:
     def __init__(self, vector_store: VectorStore) -> None:
         self.vector_store = vector_store
 
+    def employee_id_exists(self, employee_id: str) -> bool:
+        employee_id = employee_id.strip()
+        if not employee_id:
+            return False
+        image_dir = APP_ROOT / "data" / "enrollments" / employee_id
+        return self.vector_store.employee_exists(employee_id) or image_dir.exists()
+
     def register(
         self,
         employee_id: str,

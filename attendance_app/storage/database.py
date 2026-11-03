@@ -33,6 +33,17 @@ class FaceDatabase:
                 UNIQUE(employee_id, pose)
             )"""
         )
+        self.connection.execute(
+            """CREATE TABLE IF NOT EXISTS vector_index_state (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                data_revision INTEGER NOT NULL DEFAULT 0,
+                index_revision INTEGER NOT NULL DEFAULT -1
+            )"""
+        )
+        self.connection.execute(
+            """INSERT OR IGNORE INTO vector_index_state
+               (id, data_revision, index_revision) VALUES (1, 0, -1)"""
+        )
         self.connection.commit()
 
     def close(self) -> None:

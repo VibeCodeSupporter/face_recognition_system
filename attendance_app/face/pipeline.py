@@ -1,4 +1,4 @@
-"""Face detection-to-embedding orchestration, independent of model vendors."""
+"""Face enhancement, anti-spoof, and embedding orchestration."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ class FaceAnalysis:
 
 
 class FacePipeline:
-    """Generate embeddings from detector results; matching/FAS are later stages."""
+    """Run FAS and embedding on caller-selected pixels after face detection."""
 
     def __init__(
         self,

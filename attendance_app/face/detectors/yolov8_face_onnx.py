@@ -6,9 +6,8 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-import onnxruntime as ort
-
 from face.detector import FaceDetection
+from face.onnx_runtime import create_inference_session
 
 
 class YOLOv8FaceONNXDetector:
@@ -32,9 +31,7 @@ class YOLOv8FaceONNXDetector:
         self.confidence_threshold = confidence_threshold
         self.iou_threshold = iou_threshold
         self.max_detections = max_detections
-        self.session = ort.InferenceSession(
-            str(self.model_path), providers=["CPUExecutionProvider"]
-        )
+        self.session = create_inference_session(self.model_path)
         inputs = self.session.get_inputs()
         if len(inputs) != 1:
             raise ValueError(f"Expected one ONNX input, found {len(inputs)}")

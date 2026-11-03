@@ -7,7 +7,9 @@ from typing import Protocol, runtime_checkable
 
 import cv2
 import numpy as np
-import onnxruntime as ort
+from face.onnx_runtime import create_inference_session
+
+_ALIGN_DEBUG_SAVE_CALLS = 0
 
 
 @runtime_checkable
@@ -32,9 +34,7 @@ class GhostFaceNetONNXEmbedder:
             raise FileNotFoundError(
                 f"Face embedding ONNX file not found: {self.model_path}"
             )
-        self.session = ort.InferenceSession(
-            str(self.model_path), providers=["CPUExecutionProvider"]
-        )
+        self.session = create_inference_session(self.model_path)
         inputs = self.session.get_inputs()
         outputs = self.session.get_outputs()
         if len(inputs) != 1 or len(outputs) != 1:
@@ -104,10 +104,13 @@ def align_face_rgb(
         frame_bgr, [(point[0], point[1]) for point in landmarks], (112, 112)
     )
     aligned_rgb = cv2.cvtColor(aligned_bgr, cv2.COLOR_BGR2RGB)
-    debug_dir = Path(__file__).resolve().parents[1] / "data" / "aligned_inputs"
-    debug_dir.mkdir(parents=True, exist_ok=True)
-    debug_path = debug_dir / "latest_aligned_112.png"
-    aligned_bgr = cv2.cvtColor(aligned_rgb, cv2.COLOR_RGB2BGR)
-    if not cv2.imwrite(str(debug_path), aligned_bgr):
-        raise OSError(f"Could not save aligned face image: {debug_path}")
+    global _ALIGN_DEBUG_SAVE_CALLS
+    _ALIGN_DEBUG_SAVE_CALLS += 1
+    if _ALIGN_DEBUG_SAVE_CALLS == 1 or _ALIGN_DEBUG_SAVE_CALLS % 30 == 0:
+        debug_dir = Path(__file__).resolve().parents[1] / "data" / "aligned_inputs"
+        debug_dir.mkdir(parents=True, exist_ok=True)
+        debug_path = debug_dir / "latest_aligned_112.png"
+        aligned_bgr = cv2.cvtColor(aligned_rgb, cv2.COLOR_RGB2BGR)
+        if not cv2.imwrite(str(debug_path), aligned_bgr):
+            raise OSError(f"Could not save aligned face image: {debug_path}")
     return aligned_rgb

@@ -32,6 +32,9 @@ attendance_app/weights/
 attendance_app/data/faces.sqlite3*
 attendance_app/data/faces.faiss*
 attendance_app/data/faces.tmp
+attendance_app/data/captures/
 attendance_app/data/enrollments/
 attendance_app/data/fas_inputs/
 attendance_app/data/aligned_inputs/
+attendance_app/data/ying_inputs/
+attendance_app/data/ying_quality_review/

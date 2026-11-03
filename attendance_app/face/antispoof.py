@@ -9,9 +9,8 @@ from typing import Protocol, runtime_checkable
 
 import cv2
 import numpy as np
-import onnxruntime as ort
-
 from face.detector import FaceDetection
+from face.onnx_runtime import create_inference_session
 
 
 @dataclass(frozen=True)
@@ -20,6 +19,7 @@ class AntiSpoofResult:
     real_probability: float
     spoof_probability: float
     logit_difference: float
+    logit_threshold: float
     track_id: int | None
     created_at: float
 
@@ -36,17 +36,18 @@ class MiniFASOnnxDetector:
 
     INPUT_SIZE = 128
     BBOX_EXPANSION = 1.5
-    REAL_THRESHOLD = 0.5
+    LOGIT_THRESHOLD = 0.0
 
-    def __init__(self, model_path: str | Path) -> None:
+    def __init__(
+        self, model_path: str | Path, logit_threshold: float = LOGIT_THRESHOLD
+    ) -> None:
         self.model_path = Path(model_path).expanduser().resolve()
+        self.logit_threshold = float(logit_threshold)
         if not self.model_path.is_file():
             raise FileNotFoundError(
                 f"Face anti-spoof ONNX file not found: {self.model_path}"
             )
-        self.session = ort.InferenceSession(
-            str(self.model_path), providers=["CPUExecutionProvider"]
-        )
+        self.session = create_inference_session(self.model_path)
         inputs = self.session.get_inputs()
         outputs = self.session.get_outputs()
         if len(inputs) != 1 or len(outputs) != 1:
@@ -59,7 +60,7 @@ class MiniFASOnnxDetector:
                 f"Expected MiniFAS NCHW input [batch,3,128,128], got {shape}"
             )
         self.debug_dir = Path(__file__).resolve().parents[1] / "data" / "fas_inputs"
-        self.debug_dir.mkdir(parents=True, exist_ok=True)
+        self._debug_save_calls = 0
 
     def predict(
         self, frame_bgr: np.ndarray, detection: FaceDetection
@@ -68,7 +69,10 @@ class MiniFASOnnxDetector:
             frame_bgr, detection.bbox, self.BBOX_EXPANSION
         )
         model_image_bgr, tensor = preprocess_fas(expanded_crop, self.INPUT_SIZE)
-        self._save_debug_images(expanded_crop, model_image_bgr)
+        self._debug_save_calls += 1
+        if self._debug_save_calls == 1 or self._debug_save_calls % 30 == 0:
+            self.debug_dir.mkdir(parents=True, exist_ok=True)
+            self._save_debug_images(expanded_crop, model_image_bgr)
         logits = np.asarray(
             self.session.run(
                 [self.output.name], {self.input.name: tensor}
@@ -83,11 +87,13 @@ class MiniFASOnnxDetector:
         probabilities /= probabilities.sum()
         real_probability = float(probabilities[0])
         spoof_probability = float(probabilities[1])
+        logit_difference = float(logits[0] - logits[1])
         return AntiSpoofResult(
-            is_real=real_probability >= self.REAL_THRESHOLD,
+            is_real=logit_difference >= self.logit_threshold,
             real_probability=real_probability,
             spoof_probability=spoof_probability,
-            logit_difference=float(logits[0] - logits[1]),
+            logit_difference=logit_difference,
+            logit_threshold=self.logit_threshold,
             track_id=detection.track_id,
             created_at=time.monotonic(),
         )
