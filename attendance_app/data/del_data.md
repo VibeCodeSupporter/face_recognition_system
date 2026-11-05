@@ -1,0 +1,2 @@
+# lệnh xóa database
+## uv run python -c "import sqlite3; c=sqlite3.connect('data/faces.sqlite3'); c.execute('PRAGMA foreign_keys=ON'); r=c.execute('DELETE FROM employees WHERE employee_id=?', ('195050',)); c.commit(); print('Deleted:', r.rowcount); c.close()"
