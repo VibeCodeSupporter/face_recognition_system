@@ -1,11 +1,11 @@
 ﻿"""Live camera preview with ONNX face detection in the centered ROI."""
 
-from collections import deque
 from datetime import datetime
 from pathlib import Path
+import time
 
 import numpy as np
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QImage, QPixmap
 from PyQt6.QtWidgets import (
     QFileDialog,
@@ -19,9 +19,12 @@ from PyQt6.QtWidgets import (
 )
 
 from camera.frame_worker import FrameWorker
+from config import settings
 from config.settings import FACE_MATCH_THRESHOLD
+from recognition.recognition_controller import RecognitionController
 from recognition.recognition_service import RecognitionService
 from ui.widgets.camera_view import CameraView
+from ui.guidance_aggregator import GuidanceAggregator
 
 
 class RecognitionPage(QWidget):
@@ -38,9 +41,26 @@ class RecognitionPage(QWidget):
         self.current_track_id: int | None = None
         self.current_face_count = 0
         self.recognized_employee_ids: set[str] = set()
-        self.fas_track_id: int | None = None
-        self.fas_score_history: deque[float] = deque(maxlen=3)
+        self.guidance_aggregator = GuidanceAggregator()
+        self._result_event_until = 0.0
+        self._last_result_created_at = 0.0
+        self._recognition_in_flight = False
+        self._no_face_since: float | None = None
+        self.recognition_controller = (
+            RecognitionController(recognition_service, self)
+            if recognition_service is not None
+            else None
+        )
+        if self.recognition_controller is not None:
+            self.recognition_controller.result_ready.connect(self._recognition_ready)
+            self.recognition_controller.error.connect(self._embedding_error)
         self._build_ui()
+        self.guidance_timer = QTimer(self)
+        self.guidance_timer.setInterval(
+            round(settings.RECOGNITION_UI_UPDATE_INTERVAL_SECONDS * 1000)
+        )
+        self.guidance_timer.timeout.connect(self._update_guidance)
+        self.guidance_timer.start()
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -186,19 +206,27 @@ class RecognitionPage(QWidget):
         self.current_track_id = None
         self.current_face_count = 0
         self.recognized_employee_ids.clear()
-        self.fas_track_id = None
-        self.fas_score_history.clear()
+        self.guidance_aggregator = GuidanceAggregator()
+        self._last_result_created_at = 0.0
+        self._result_event_until = 0.0
+        self._no_face_since = None
+        self._recognition_in_flight = False
         self.camera_view.set_spoof_state(False)
         self.embedding_status.setText("Embedding: loading ONNX model")
         self.fas_status.setText("FAS: loading ONNX model")
         self.camera_status.setText("● Loading ONNX detector")
         self.worker = FrameWorker()
         self.worker.frame_ready.connect(self._on_frame)
+        self.worker.guidance_result.connect(self._on_guidance_result)
         self.worker.camera_error.connect(self._camera_error)
         self.worker.detector_ready.connect(self._detector_ready)
         self.worker.detector_error.connect(self._detector_error)
-        self.worker.embedding_ready.connect(self._embedding_ready)
+        if self.recognition_controller is not None:
+            self.worker.embedding_ready.connect(self.recognition_controller.identify)
+        else:
+            self.worker.embedding_ready.connect(self._embedding_preview)
         self.worker.embedding_error.connect(self._embedding_error)
+        self.worker.pipeline_error.connect(self._embedding_error)
         self.worker.antispoof_result.connect(self._on_antispoof_result)
         self.worker.antispoof_error.connect(self._on_antispoof_error)
         self.worker.start()
@@ -250,24 +278,25 @@ class RecognitionPage(QWidget):
         self.camera_status.style().unpolish(self.camera_status)
         self.camera_status.style().polish(self.camera_status)
 
-    def _embedding_ready(self, result) -> None:
+    def _recognition_ready(self, result, match) -> None:
         self.embedding_error_message = None
-        if self.recognition_service is None:
-            self.embedding_status.setText(
-                f"Embedding ready · {result.model_name} · {result.vector.size} dimensions"
-            )
+        if result.created_at < self._last_result_created_at:
             return
-        try:
-            match = self.recognition_service.identify(result.vector)
-        except Exception as error:
-            self._embedding_error(f"Local vector search failed: {error}")
-            return
+        self._recognition_in_flight = False
+        self._last_result_created_at = result.created_at
         if match is None:
+            if self.worker is not None:
+                self.worker.complete_recognition(False, 0.0)
+            self._result_event_until = 0.0
             self._set_result_state("Không khớp hồ sơ nào trong gallery", "#f6c177")
             self.embedding_status.setText(
                 "Không nhận diện được người này · khoảng cách vượt ngưỡng."
             )
         else:
+            cooldown = settings.RECOGNITION_SUCCESS_COOLDOWN_SECONDS
+            if self.worker is not None:
+                self.worker.complete_recognition(True, cooldown)
+            self._result_event_until = time.monotonic() + cooldown
             already_seen = match.employee_id in self.recognized_employee_ids
             self.recognized_employee_ids.add(match.employee_id)
             image = np.ascontiguousarray(result.aligned_rgb)
@@ -300,9 +329,9 @@ class RecognitionPage(QWidget):
             self.result_name.setText(f"Tên: {match.name}")
             self.result_id.setText(f"ID: {match.employee_id}")
             self.result_score.setText(
-                f"Squared L2 (càng thấp càng gần): {match.squared_l2_distance:.3f}"
+                f"Squared L2 (0–4, càng thấp càng giống): {match.squared_l2_distance:.3f}"
             )
-            self.result_threshold.setText(f"Ngưỡng: ≤ {threshold:.2f}")
+            self.result_threshold.setText(f"Ngưỡng squared L2: ≤ {threshold:.2f}")
             self.embedding_status.setText(
                 f"Người này đã được nhận diện trong lượt hiện tại · "
                 f"squared L2 {match.squared_l2_distance:.3f}"
@@ -311,25 +340,30 @@ class RecognitionPage(QWidget):
                 f"squared L2 {match.squared_l2_distance:.3f}"
             )
 
+    def _embedding_preview(self, result) -> None:
+        self._recognition_in_flight = False
+        if self.worker is not None:
+            self.worker.complete_recognition(False, 0.0)
+        self.embedding_status.setText(
+            f"Embedding ready · {result.model_name} · {result.vector.size} dimensions"
+        )
+
     def _embedding_error(self, message: str) -> None:
+        self._recognition_in_flight = False
+        if self.worker is not None:
+            self.worker.complete_recognition(False, 0.0)
         self.embedding_error_message = message
         self.embedding_status.setText(f"Embedding unavailable · {message}")
 
     def _on_antispoof_result(self, result) -> None:
         self.fas_error_message = None
-        if result.track_id != self.fas_track_id:
-            self.fas_score_history.clear()
-            self.fas_track_id = result.track_id
-        self.fas_score_history.append(result.logit_difference)
-        average_score = sum(self.fas_score_history) / len(self.fas_score_history)
-        is_real = average_score >= result.logit_threshold
-        verdict = "Real" if is_real else "Possible spoof"
+        verdict = "Real" if result.is_real else "Possible spoof"
         self.fas_status.setText(
-            f"FAS: {verdict} · score {average_score:+.2f} "
+            f"FAS: {verdict} · score {result.logit_difference:+.2f} "
             f"(threshold {result.logit_threshold:+.2f})"
         )
-        self.camera_view.set_spoof_state(not is_real, result.track_id)
-        if not is_real:
+        self.camera_view.set_spoof_state(not result.is_real, result.track_id)
+        if not result.is_real:
             self._set_result_state(
                 "Spoof phát hiện · nhận diện đang tạm dừng", "#ff6b6b"
             )
@@ -339,7 +373,6 @@ class RecognitionPage(QWidget):
 
     def _on_antispoof_error(self, message: str) -> None:
         self.fas_error_message = message
-        self.fas_score_history.clear()
         self.camera_view.set_spoof_state(False)
         self.fas_status.setText(f"FAS unavailable · {message}")
 
@@ -355,42 +388,57 @@ class RecognitionPage(QWidget):
             and previous_track_id is not None
             and self.current_track_id != previous_track_id
         ):
-            self.fas_score_history.clear()
             self.camera_view.set_spoof_state(False)
+            self.fas_error_message = None
+            self.fas_status.setText("FAS: collecting same-track samples")
         if self.current_face_count == 0:
-            self.fas_score_history.clear()
-            self.fas_track_id = None
             self.camera_view.set_spoof_state(False)
-            self._set_result_state("Chờ khuôn mặt trong vùng")
+            if time.monotonic() >= self._result_event_until:
+                self._set_result_state("Chờ khuôn mặt trong vùng")
         elif self.current_face_count > 1:
-            self.fas_score_history.clear()
-            self.fas_track_id = None
             self.camera_view.set_spoof_state(False)
-            self._set_result_state("Có nhiều mặt · nhận diện tạm dừng", "#f6c177")
+            if time.monotonic() >= self._result_event_until:
+                self._set_result_state("Có nhiều mặt · nhận diện tạm dừng", "#f6c177")
         if self.detector_error_message:
             self.camera_status.setText("● Camera live · detector unavailable")
-            self.face_guidance.setText("Không thể kiểm tra khuôn mặt; hãy kiểm tra model ONNX.")
             self.quality_details.clear()
         elif self.detector_available:
             count = len(detections)
             if count == 0:
                 message = "No face in zone"
-                guidance = "Đưa một khuôn mặt vào vùng giữa."
                 details = ""
                 self.fas_status.setText("FAS: waiting for one face")
             elif count == 1:
                 message = "1 face detected"
                 if quality_result is None:
-                    guidance = "Đang kiểm tra FAS trên ảnh gốc."
                     details = ""
                 else:
-                    guidance = quality_result.guidance
                     details = quality_result.details
             else:
                 message = f"{count} faces detected"
-                guidance = "Có nhiều khuôn mặt; vui lòng để một người trong vùng."
                 details = ""
                 self.fas_status.setText("FAS: paused · multiple faces in zone")
-            self.face_guidance.setText(guidance)
             self.quality_details.setText(details)
             self.camera_status.setText(f"● Camera live · {message}")
+
+    def _on_guidance_result(self, event) -> None:
+        frame_id, timestamp, outcome, track_id, message = event
+        self.guidance_aggregator.add(timestamp, outcome, track_id, message)
+        if outcome == "ALL_PASS":
+            self._recognition_in_flight = True
+        if outcome == "NO_FACE":
+            self._no_face_since = self._no_face_since or timestamp
+            if timestamp - self._no_face_since >= settings.RECOGNITION_SESSION_REARM_SECONDS:
+                self.recognized_employee_ids.clear()
+        else:
+            self._no_face_since = None
+
+    def _update_guidance(self) -> None:
+        now = time.monotonic()
+        if now < self._result_event_until:
+            return
+        self.face_guidance.setText(
+            self.guidance_aggregator.guidance(
+                now, recognizing=self._recognition_in_flight
+            )
+        )

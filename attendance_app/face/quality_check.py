@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections import deque
 from dataclasses import dataclass
 import math
 
@@ -10,7 +9,9 @@ import cv2
 import numpy as np
 
 from common.face_region import face_roi_bounds
+from config import settings
 from face.detector import FaceDetection
+from face.embedding import has_reliable_landmarks
 
 
 @dataclass(frozen=True)
@@ -18,7 +19,6 @@ class FaceQualityResult:
     """Metrics and user guidance for one face in the capture ROI."""
 
     passed: bool
-    stable: bool
     guidance: str
     details: str
     face_width_ratio: float
@@ -33,25 +33,20 @@ class FaceQualityResult:
 class FaceQualityChecker:
     """Check face size, sharpness, exposure, pose, framing, and stability."""
 
-    MIN_FACE_HEIGHT_RATIO = 0.40
-    MIN_FACE_WIDTH_RATIO = 0.20
-    MAX_FACE_HEIGHT_RATIO = 0.78
-    MAX_FACE_WIDTH_RATIO = 0.85
-    MIN_BLUR_SCORE = 100.0
-    MIN_BRIGHTNESS = 80.0
-    MAX_BRIGHTNESS = 220.0
-    # Keep pose guidance permissive so small natural head movements do not
-    # interrupt attendance. These are advisory limits, not recognition gates.
-    MAX_YAW_DEGREES = 35.0
-    MAX_PITCH_DEGREES = 35.0
-    MAX_ROLL_DEGREES = 30.0
-    STABLE_FRAME_COUNT = 4
-    FRONT_MAX_YAW = 22.0
-    FRONT_MAX_PITCH = 27.0
-    TURN_MIN_ANGLE = 9.0
-    TURN_MAX_ANGLE = 40.0
-    PITCH_MIN_ANGLE = 5.0
-    PITCH_MAX_ANGLE = 25.0
+    MIN_FACE_HEIGHT_RATIO = settings.FACE_QUALITY_MIN_FACE_HEIGHT_RATIO
+    MIN_FACE_WIDTH_RATIO = settings.FACE_QUALITY_MIN_FACE_WIDTH_RATIO
+    MAX_FACE_HEIGHT_RATIO = settings.FACE_QUALITY_MAX_FACE_HEIGHT_RATIO
+    MAX_FACE_WIDTH_RATIO = settings.FACE_QUALITY_MAX_FACE_WIDTH_RATIO
+    MIN_BLUR_SCORE = settings.FACE_QUALITY_MIN_BLUR_SCORE
+    MIN_BRIGHTNESS = settings.FACE_QUALITY_MIN_BRIGHTNESS
+    MAX_BRIGHTNESS = settings.FACE_QUALITY_MAX_BRIGHTNESS
+    FRONT_MAX_YAW = settings.FACE_POSE_FRONT_MAX_YAW
+    FRONT_MAX_PITCH = settings.FACE_POSE_FRONT_MAX_PITCH
+    TURN_MIN_ANGLE = settings.FACE_POSE_TURN_MIN_ANGLE
+    TURN_MAX_ANGLE = settings.FACE_POSE_TURN_MAX_ANGLE
+    PITCH_MIN_ANGLE = settings.FACE_POSE_PITCH_MIN_ANGLE
+    PITCH_MAX_ANGLE = settings.FACE_POSE_PITCH_MAX_ANGLE
+    CROSS_AXIS_MAX_ANGLE = settings.FACE_POSE_CROSS_AXIS_MAX_ANGLE
 
     # Approximate 3-D landmarks in detector order. Image coordinates grow
     # downward, so the eye row is above the nose and mouth row below it.
@@ -66,18 +61,13 @@ class FaceQualityChecker:
         dtype=np.float64,
     )
 
-    def __init__(self) -> None:
-        self._history: deque[tuple[float, float, float, float]] = deque(
-            maxlen=self.STABLE_FRAME_COUNT
-        )
-        self._track_id: int | None = None
-
-    def reset(self) -> None:
-        self._history.clear()
-        self._track_id = None
-
     def evaluate(
-        self, frame_bgr: np.ndarray, detection: FaceDetection
+        self,
+        frame_bgr: np.ndarray,
+        detection: FaceDetection,
+        *,
+        pose_limits: tuple[float, float, float] | None = None,
+        registration: bool = False,
     ) -> FaceQualityResult:
         frame_height, frame_width = frame_bgr.shape[:2]
         roi_left, roi_top, roi_right, roi_bottom = face_roi_bounds(
@@ -108,21 +98,40 @@ class FaceQualityChecker:
             brightness = 0.0
 
         pose = self._estimate_pose(detection.landmarks, frame_width, frame_height)
+        active_pose_limits = pose_limits
+        if registration and active_pose_limits is None:
+            active_pose_limits = (
+                settings.FACE_QUALITY_REGISTRATION_MAX_YAW,
+                settings.FACE_QUALITY_REGISTRATION_MAX_PITCH,
+                settings.FACE_QUALITY_REGISTRATION_MAX_ROLL,
+            )
         issues: list[str] = []
 
+        min_height = settings.FACE_QUALITY_REGISTRATION_MIN_FACE_HEIGHT_RATIO if registration else self.MIN_FACE_HEIGHT_RATIO
+        min_width = settings.FACE_QUALITY_REGISTRATION_MIN_FACE_WIDTH_RATIO if registration else self.MIN_FACE_WIDTH_RATIO
+        max_height = settings.FACE_QUALITY_REGISTRATION_MAX_FACE_HEIGHT_RATIO if registration else self.MAX_FACE_HEIGHT_RATIO
+        max_width = settings.FACE_QUALITY_REGISTRATION_MAX_FACE_WIDTH_RATIO if registration else self.MAX_FACE_WIDTH_RATIO
+        min_blur = settings.FACE_QUALITY_REGISTRATION_MIN_BLUR_SCORE if registration else self.MIN_BLUR_SCORE
+        min_brightness = settings.FACE_QUALITY_REGISTRATION_MIN_BRIGHTNESS if registration else self.MIN_BRIGHTNESS
+        max_brightness = settings.FACE_QUALITY_REGISTRATION_MAX_BRIGHTNESS if registration else self.MAX_BRIGHTNESS
         if (
-            height_ratio < self.MIN_FACE_HEIGHT_RATIO
-            or width_ratio < self.MIN_FACE_WIDTH_RATIO
+            height_ratio < min_height
+            or width_ratio < min_width
         ):
             issues.append("small")
         elif (
-            height_ratio > self.MAX_FACE_HEIGHT_RATIO
-            or width_ratio > self.MAX_FACE_WIDTH_RATIO
+            height_ratio > max_height
+            or width_ratio > max_width
         ):
             issues.append("large")
 
-        edge_margin_x = roi_width * 0.015
-        edge_margin_y = roi_height * 0.015
+        edge_margin_ratio = (
+            settings.FACE_QUALITY_REGISTRATION_EDGE_MARGIN_RATIO
+            if registration
+            else settings.FACE_QUALITY_EDGE_MARGIN_RATIO
+        )
+        edge_margin_x = roi_width * edge_margin_ratio
+        edge_margin_y = roi_height * edge_margin_ratio
         if (
             x1 <= roi_left + edge_margin_x
             or x2 >= roi_right - edge_margin_x
@@ -130,40 +139,30 @@ class FaceQualityChecker:
             or y2 >= roi_bottom - edge_margin_y
         ):
             issues.append("framing")
-        if blur_score < self.MIN_BLUR_SCORE:
+        if blur_score < min_blur:
             issues.append("blur")
-        if brightness < self.MIN_BRIGHTNESS:
+        if brightness < min_brightness:
             issues.append("dark")
-        elif brightness > self.MAX_BRIGHTNESS:
+        elif brightness > max_brightness:
             issues.append("bright")
         if pose is None:
             issues.append("pose_unknown")
-        else:
+        elif active_pose_limits is not None:
             yaw, pitch, roll = pose
-            if abs(yaw) > self.MAX_YAW_DEGREES or abs(pitch) > self.MAX_PITCH_DEGREES:
+            yaw_limit, pitch_limit, roll_limit = active_pose_limits
+            if abs(yaw) > yaw_limit or abs(pitch) > pitch_limit:
                 issues.append("pose_turn")
-            elif abs(roll) > self.MAX_ROLL_DEGREES:
+            elif abs(roll) > roll_limit:
                 issues.append("pose_tilt")
 
-        # Pose estimates from five detector landmarks are approximate; do not
-        # let them prevent a frame from passing basic image quality checks.
-        blocking_issues = [
-            issue
-            for issue in issues
-            if issue not in {"pose_unknown", "pose_turn", "pose_tilt"}
-        ]
-        passed = not blocking_issues
-        stable = self._update_stability(
-            detection, roi_left, roi_top, roi_width, roi_height, passed
-        )
-        guidance = self._guidance(issues, stable)
+        passed = not issues
+        guidance = self._guidance(issues)
         details = self._format_details(
-            width_ratio, height_ratio, blur_score, brightness, pose, stable
+            width_ratio, height_ratio, blur_score, brightness, pose
         )
         yaw, pitch, roll = pose if pose is not None else (None, None, None)
         return FaceQualityResult(
             passed=passed,
-            stable=stable,
             guidance=guidance,
             details=details,
             face_width_ratio=width_ratio,
@@ -175,44 +174,6 @@ class FaceQualityChecker:
             roll=roll,
         )
 
-    def _update_stability(
-        self,
-        detection: FaceDetection,
-        roi_left: int,
-        roi_top: int,
-        roi_width: int,
-        roi_height: int,
-        passed: bool,
-    ) -> bool:
-        if not passed:
-            self._history.clear()
-            return False
-
-        if detection.track_id is not None and detection.track_id >= 0:
-            if self._track_id is not None and detection.track_id != self._track_id:
-                self._history.clear()
-            self._track_id = detection.track_id
-
-        x1, y1, x2, y2 = detection.bbox
-        self._history.append(
-            (
-                ((x1 + x2) / 2.0 - roi_left) / roi_width,
-                ((y1 + y2) / 2.0 - roi_top) / roi_height,
-                (x2 - x1) / roi_width,
-                (y2 - y1) / roi_height,
-            )
-        )
-        if len(self._history) < self.STABLE_FRAME_COUNT:
-            return False
-
-        spread = np.ptp(np.asarray(self._history, dtype=np.float32), axis=0)
-        return bool(
-            spread[0] <= 0.035
-            and spread[1] <= 0.035
-            and spread[2] <= 0.06
-            and spread[3] <= 0.06
-        )
-
     @classmethod
     def _estimate_pose(
         cls,
@@ -220,7 +181,7 @@ class FaceQualityChecker:
         frame_width: int,
         frame_height: int,
     ) -> tuple[float, float, float] | None:
-        if len(landmarks) != 5 or any(point[2] < 0.2 for point in landmarks):
+        if not has_reliable_landmarks(landmarks):
             return None
 
         image_points = np.asarray(
@@ -283,6 +244,7 @@ class FaceQualityChecker:
         cls,
         pose_key: str,
         pose: tuple[float, float, float] | None,
+        neutral_pose: tuple[float, float] | None = None,
     ) -> tuple[bool, str]:
         """Check the requested enrollment direction before costly processing."""
         if pose is None:
@@ -295,26 +257,34 @@ class FaceQualityChecker:
             return True, "Nhìn thẳng vào camera."
         if pose_key in {"left", "right"}:
             direction = 1.0 if pose_key == "left" else -1.0
-            directed_yaw = yaw * direction
+            neutral_yaw, neutral_pitch = neutral_pose or (0.0, 0.0)
+            directed_yaw = (yaw - neutral_yaw) * direction
             side = "trái" if pose_key == "left" else "phải"
             if directed_yaw < cls.TURN_MIN_ANGLE:
                 return False, f"Quay nhẹ sang {side}."
             if directed_yaw > cls.TURN_MAX_ANGLE:
                 return False, "Bạn quay hơi nhiều, quay lại nhẹ một chút."
-            return abs(pitch) <= 28.0, "Giữ đầu tự nhiên, chỉ quay mặt sang bên."
+            return (
+                abs(pitch - neutral_pitch) <= cls.CROSS_AXIS_MAX_ANGLE,
+                "Giữ đầu tự nhiên, chỉ quay mặt sang bên.",
+            )
 
         # With this pose decomposition, looking down is positive pitch and
         # looking up is negative pitch.
+        neutral_yaw, neutral_pitch = neutral_pose or (0.0, 0.0)
         direction = 1.0 if pose_key == "down" else -1.0
-        directed_pitch = pitch * direction
+        directed_pitch = (pitch - neutral_pitch) * direction
         if directed_pitch < cls.PITCH_MIN_ANGLE:
             return False, "Cúi nhẹ xuống." if pose_key == "down" else "Ngửa nhẹ lên."
         if directed_pitch > cls.PITCH_MAX_ANGLE:
             return False, "Góc hơi nhiều, trở lại nhẹ một chút."
-        return abs(yaw) <= 28.0, "Giữ mặt hướng về trước, chỉ thay đổi nhẹ góc lên/xuống."
+        return (
+            abs(yaw - neutral_yaw) <= cls.CROSS_AXIS_MAX_ANGLE,
+            "Giữ mặt hướng về trước, chỉ thay đổi nhẹ góc lên/xuống.",
+        )
 
     @staticmethod
-    def _guidance(issues: list[str], stable: bool) -> str:
+    def _guidance(issues: list[str]) -> str:
         messages = {
             "small": "Mặt hơi xa, vui lòng đưa mặt lại gần camera.",
             "large": "Bạn đang hơi gần, vui lòng lùi lại một chút.",
@@ -339,9 +309,7 @@ class FaceQualityChecker:
         ):
             if issue in issues:
                 return messages[issue]
-        if stable:
-            return "Chất lượng đạt, vui lòng giữ nguyên."
-        return "Chất lượng ổn, vui lòng giữ nguyên để kiểm tra thêm."
+        return "Chất lượng đạt, vui lòng giữ nguyên."
 
     @staticmethod
     def _format_details(
@@ -350,7 +318,6 @@ class FaceQualityChecker:
         blur_score: float,
         brightness: float,
         pose: tuple[float, float, float] | None,
-        stable: bool,
     ) -> str:
         size_text = f"Face size: {width_ratio:.0%} × {height_ratio:.0%} ROI"
         blur_text = f"Blur: {blur_score:.0f}"
@@ -360,7 +327,4 @@ class FaceQualityChecker:
         else:
             yaw, pitch, roll = pose
             pose_text = f"Pose: yaw {yaw:.0f}°, pitch {pitch:.0f}°, roll {roll:.0f}°"
-        stability_text = "stable" if stable else "checking stability"
-        return " · ".join(
-            (size_text, blur_text, brightness_text, pose_text, stability_text)
-        )
+        return " · ".join((size_text, blur_text, brightness_text, pose_text))
