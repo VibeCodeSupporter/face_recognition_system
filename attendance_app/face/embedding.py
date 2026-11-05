@@ -98,7 +98,7 @@ def align_face_rgb(
     """Align a face, save the latest debug image, and return RGB pixels."""
     from face.alignment import align_face
 
-    if len(landmarks) != 5 or any(point[2] < 0.2 for point in landmarks):
+    if not has_reliable_landmarks(landmarks):
         raise ValueError("Five reliable face landmarks are required for alignment")
     aligned_bgr = align_face(
         frame_bgr, [(point[0], point[1]) for point in landmarks], (112, 112)
@@ -114,3 +114,14 @@ def align_face_rgb(
         if not cv2.imwrite(str(debug_path), aligned_bgr):
             raise OSError(f"Could not save aligned face image: {debug_path}")
     return aligned_rgb
+
+
+def has_reliable_landmarks(
+    landmarks: tuple[tuple[float, float, float], ...],
+    minimum_visibility: float = 0.2,
+) -> bool:
+    """Return whether all five finite alignment points meet the visibility floor."""
+    return len(landmarks) == 5 and all(
+        np.isfinite(point).all() and point[2] >= minimum_visibility
+        for point in landmarks
+    )

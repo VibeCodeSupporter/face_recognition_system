@@ -10,7 +10,9 @@ import cv2
 import numpy as np
 
 from common.face_region import face_roi_bounds
+from config import settings
 from face.detector import FaceDetection
+from face.embedding import has_reliable_landmarks
 
 
 @dataclass(frozen=True)
@@ -46,12 +48,13 @@ class FaceQualityChecker:
     MAX_PITCH_DEGREES = 35.0
     MAX_ROLL_DEGREES = 30.0
     STABLE_FRAME_COUNT = 4
-    FRONT_MAX_YAW = 22.0
-    FRONT_MAX_PITCH = 27.0
-    TURN_MIN_ANGLE = 9.0
-    TURN_MAX_ANGLE = 40.0
-    PITCH_MIN_ANGLE = 5.0
-    PITCH_MAX_ANGLE = 25.0
+    FRONT_MAX_YAW = settings.FACE_POSE_FRONT_MAX_YAW
+    FRONT_MAX_PITCH = settings.FACE_POSE_FRONT_MAX_PITCH
+    TURN_MIN_ANGLE = settings.FACE_POSE_TURN_MIN_ANGLE
+    TURN_MAX_ANGLE = settings.FACE_POSE_TURN_MAX_ANGLE
+    PITCH_MIN_ANGLE = settings.FACE_POSE_PITCH_MIN_ANGLE
+    PITCH_MAX_ANGLE = settings.FACE_POSE_PITCH_MAX_ANGLE
+    CROSS_AXIS_MAX_ANGLE = settings.FACE_POSE_CROSS_AXIS_MAX_ANGLE
 
     # Approximate 3-D landmarks in detector order. Image coordinates grow
     # downward, so the eye row is above the nose and mouth row below it.
@@ -77,7 +80,12 @@ class FaceQualityChecker:
         self._track_id = None
 
     def evaluate(
-        self, frame_bgr: np.ndarray, detection: FaceDetection
+        self,
+        frame_bgr: np.ndarray,
+        detection: FaceDetection,
+        *,
+        track_stability: bool = True,
+        pose_limits: tuple[float, float, float] | None = None,
     ) -> FaceQualityResult:
         frame_height, frame_width = frame_bgr.shape[:2]
         roi_left, roi_top, roi_right, roi_bottom = face_roi_bounds(
@@ -140,21 +148,31 @@ class FaceQualityChecker:
             issues.append("pose_unknown")
         else:
             yaw, pitch, roll = pose
-            if abs(yaw) > self.MAX_YAW_DEGREES or abs(pitch) > self.MAX_PITCH_DEGREES:
+            yaw_limit, pitch_limit, roll_limit = pose_limits or (
+                self.MAX_YAW_DEGREES,
+                self.MAX_PITCH_DEGREES,
+                self.MAX_ROLL_DEGREES,
+            )
+            if abs(yaw) > yaw_limit or abs(pitch) > pitch_limit:
                 issues.append("pose_turn")
-            elif abs(roll) > self.MAX_ROLL_DEGREES:
+            elif abs(roll) > roll_limit:
                 issues.append("pose_tilt")
 
         # Pose estimates from five detector landmarks are approximate; do not
         # let them prevent a frame from passing basic image quality checks.
+        ignored_pose_issues = {"pose_unknown"}
+        if pose_limits is None:
+            ignored_pose_issues.update({"pose_turn", "pose_tilt"})
         blocking_issues = [
-            issue
-            for issue in issues
-            if issue not in {"pose_unknown", "pose_turn", "pose_tilt"}
+            issue for issue in issues if issue not in ignored_pose_issues
         ]
         passed = not blocking_issues
-        stable = self._update_stability(
-            detection, roi_left, roi_top, roi_width, roi_height, passed
+        stable = (
+            self._update_stability(
+                detection, roi_left, roi_top, roi_width, roi_height, passed
+            )
+            if track_stability
+            else True
         )
         guidance = self._guidance(issues, stable)
         details = self._format_details(
@@ -220,7 +238,7 @@ class FaceQualityChecker:
         frame_width: int,
         frame_height: int,
     ) -> tuple[float, float, float] | None:
-        if len(landmarks) != 5 or any(point[2] < 0.2 for point in landmarks):
+        if not has_reliable_landmarks(landmarks):
             return None
 
         image_points = np.asarray(
@@ -283,6 +301,7 @@ class FaceQualityChecker:
         cls,
         pose_key: str,
         pose: tuple[float, float, float] | None,
+        neutral_pose: tuple[float, float] | None = None,
     ) -> tuple[bool, str]:
         """Check the requested enrollment direction before costly processing."""
         if pose is None:
@@ -295,23 +314,31 @@ class FaceQualityChecker:
             return True, "Nhìn thẳng vào camera."
         if pose_key in {"left", "right"}:
             direction = 1.0 if pose_key == "left" else -1.0
-            directed_yaw = yaw * direction
+            neutral_yaw, neutral_pitch = neutral_pose or (0.0, 0.0)
+            directed_yaw = (yaw - neutral_yaw) * direction
             side = "trái" if pose_key == "left" else "phải"
             if directed_yaw < cls.TURN_MIN_ANGLE:
                 return False, f"Quay nhẹ sang {side}."
             if directed_yaw > cls.TURN_MAX_ANGLE:
                 return False, "Bạn quay hơi nhiều, quay lại nhẹ một chút."
-            return abs(pitch) <= 28.0, "Giữ đầu tự nhiên, chỉ quay mặt sang bên."
+            return (
+                abs(pitch - neutral_pitch) <= cls.CROSS_AXIS_MAX_ANGLE,
+                "Giữ đầu tự nhiên, chỉ quay mặt sang bên.",
+            )
 
         # With this pose decomposition, looking down is positive pitch and
         # looking up is negative pitch.
+        neutral_yaw, neutral_pitch = neutral_pose or (0.0, 0.0)
         direction = 1.0 if pose_key == "down" else -1.0
-        directed_pitch = pitch * direction
+        directed_pitch = (pitch - neutral_pitch) * direction
         if directed_pitch < cls.PITCH_MIN_ANGLE:
             return False, "Cúi nhẹ xuống." if pose_key == "down" else "Ngửa nhẹ lên."
         if directed_pitch > cls.PITCH_MAX_ANGLE:
             return False, "Góc hơi nhiều, trở lại nhẹ một chút."
-        return abs(yaw) <= 28.0, "Giữ mặt hướng về trước, chỉ thay đổi nhẹ góc lên/xuống."
+        return (
+            abs(yaw - neutral_yaw) <= cls.CROSS_AXIS_MAX_ANGLE,
+            "Giữ mặt hướng về trước, chỉ thay đổi nhẹ góc lên/xuống.",
+        )
 
     @staticmethod
     def _guidance(issues: list[str], stable: bool) -> str:
