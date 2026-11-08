@@ -4,7 +4,7 @@ import time
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
-    QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
+    QBoxLayout, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
     QProgressBar, QPushButton, QVBoxLayout, QWidget,
 )
 
@@ -40,8 +40,8 @@ class RegistrationPage(QWidget):
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(32, 24, 32, 24)
-        layout.setSpacing(12)
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setSpacing(8)
         heading = QHBoxLayout()
         title_block = QVBoxLayout()
         title = QLabel("Register a face")
@@ -110,6 +110,24 @@ class RegistrationPage(QWidget):
         self.reset_button.clicked.connect(self._reset_enrollment)
         actions.addWidget(self.reset_button)
         layout.addLayout(actions)
+        self._heading_layout = heading
+        self._actions_layout = actions
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        compact = self.width() < 760
+        direction = (
+            QBoxLayout.Direction.TopToBottom
+            if compact
+            else QBoxLayout.Direction.LeftToRight
+        )
+        self._heading_layout.setDirection(direction)
+        self._actions_layout.setDirection(direction)
+        margin = 12 if compact else 20
+        self.layout().setContentsMargins(
+            margin, 10 if compact else 16, margin, 10 if compact else 16
+        )
+        self.layout().setSpacing(6 if compact else 8)
 
     def start_camera(self) -> None:
         if not self.enrollment_started:

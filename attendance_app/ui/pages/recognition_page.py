@@ -9,11 +9,13 @@ from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QImage, QPixmap
 from PyQt6.QtWidgets import (
     QFileDialog,
+    QBoxLayout,
     QFrame,
     QHBoxLayout,
     QLabel,
     QMessageBox,
     QPushButton,
+    QSplitter,
     QVBoxLayout,
     QWidget,
 )
@@ -46,6 +48,7 @@ class RecognitionPage(QWidget):
         self._last_result_created_at = 0.0
         self._recognition_in_flight = False
         self._no_face_since: float | None = None
+        self._result_face_qimage: QImage | None = None
         self.recognition_controller = (
             RecognitionController(recognition_service, self)
             if recognition_service is not None
@@ -64,8 +67,8 @@ class RecognitionPage(QWidget):
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(32, 28, 32, 28)
-        layout.setSpacing(18)
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setSpacing(10)
 
         heading = QHBoxLayout()
         title_block = QVBoxLayout()
@@ -87,14 +90,15 @@ class RecognitionPage(QWidget):
         layout.addLayout(heading)
 
         self.camera_view = CameraView()
-        self.camera_view.setMinimumSize(640, 400)
-        preview_row = QHBoxLayout()
-        preview_row.setSpacing(16)
-        preview_row.addWidget(self.camera_view, 1)
+        preview_splitter = QSplitter(Qt.Orientation.Horizontal)
+        preview_splitter.setObjectName("previewSplitter")
+        preview_splitter.setChildrenCollapsible(False)
+        preview_splitter.setHandleWidth(10)
+        preview_splitter.addWidget(self.camera_view)
 
         self.result_panel = QFrame()
         self.result_panel.setObjectName("recognitionResultPanel")
-        self.result_panel.setMinimumWidth(320)
+        self.result_panel.setMinimumWidth(220)
         self.result_panel.setStyleSheet(
             "QFrame#recognitionResultPanel { background: #151d28; "
             "border: 1px solid #2c3745; border-radius: 12px; }"
@@ -108,7 +112,7 @@ class RecognitionPage(QWidget):
         result_layout.addWidget(result_title)
         self.result_image = QLabel("Chưa có match")
         self.result_image.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.result_image.setFixedSize(220, 220)
+        self.result_image.setFixedSize(180, 180)
         self.result_image.setStyleSheet(
             "background: #080b10; border: 1px solid #344152; border-radius: 8px;"
         )
@@ -127,8 +131,11 @@ class RecognitionPage(QWidget):
             label.setWordWrap(True)
             result_layout.addWidget(label)
         result_layout.addStretch(1)
-        preview_row.addWidget(self.result_panel, 0)
-        layout.addLayout(preview_row, 1)
+        preview_splitter.addWidget(self.result_panel)
+        preview_splitter.setStretchFactor(0, 1)
+        preview_splitter.setStretchFactor(1, 0)
+        self._preview_splitter = preview_splitter
+        layout.addWidget(preview_splitter, 1)
 
         self.face_guidance = QLabel("Đưa một khuôn mặt vào vùng giữa.")
         self.face_guidance.setObjectName("faceGuidance")
@@ -167,6 +174,57 @@ class RecognitionPage(QWidget):
         self.last_capture = QLabel("No image captured yet")
         self.last_capture.setObjectName("mutedText")
         layout.addWidget(self.last_capture)
+        self._heading_layout = heading
+        self._footer_layout = footer
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        narrow = self.width() < 980
+        direction = (
+            QBoxLayout.Direction.TopToBottom
+            if narrow
+            else QBoxLayout.Direction.LeftToRight
+        )
+        self._heading_layout.setDirection(direction)
+        self._footer_layout.setDirection(
+            QBoxLayout.Direction.TopToBottom
+            if self.width() < 760
+            else QBoxLayout.Direction.LeftToRight
+        )
+        orientation = (
+            Qt.Orientation.Vertical if narrow else Qt.Orientation.Horizontal
+        )
+        if self._preview_splitter.orientation() != orientation:
+            self._preview_splitter.setOrientation(orientation)
+            if narrow:
+                self._preview_splitter.setStretchFactor(0, 3)
+                self._preview_splitter.setStretchFactor(1, 2)
+            else:
+                self._preview_splitter.setStretchFactor(0, 1)
+                self._preview_splitter.setStretchFactor(1, 0)
+            extent = (
+                self._preview_splitter.height()
+                if narrow
+                else self._preview_splitter.width()
+            )
+            self._preview_splitter.setSizes(
+                [round(extent * 0.62), round(extent * 0.38)]
+            )
+        image_size = min(220, max(96, self.width() // (4 if narrow else 7)))
+        self.result_image.setFixedSize(image_size, image_size)
+        self._refresh_result_face_image()
+
+    def _refresh_result_face_image(self) -> None:
+        if self._result_face_qimage is None:
+            return
+        pixmap = QPixmap.fromImage(self._result_face_qimage)
+        self.result_image.setPixmap(
+            pixmap.scaled(
+                self.result_image.contentsRect().size(),
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+        )
 
     def rebuild_index(self) -> None:
         if self.recognition_service is None:
@@ -308,13 +366,8 @@ class RecognitionPage(QWidget):
                 image.strides[0],
                 QImage.Format.Format_RGB888,
             ).copy()
-            self.result_image.setPixmap(
-                QPixmap.fromImage(qimage).scaled(
-                    self.result_image.size(),
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation,
-                )
-            )
+            self._result_face_qimage = qimage
+            self._refresh_result_face_image()
             threshold = getattr(
                 self.recognition_service.vector_store,
                 "threshold",

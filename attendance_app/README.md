@@ -1,167 +1,198 @@
 ﻿# Attendance Device App
 
-Ứng dụng PyQt6 cho device tại cửa. Demo hiện mở webcam, hiển thị preview liên tục và vẽ một ROI hình chữ nhật ở giữa để hướng dẫn đặt mặt. Bên phải camera có panel kết quả nhận diện gần nhất, gồm ảnh mặt đã align, tên, ID và squared L2; người đã được nhận diện trong lượt chạy hiện tại sẽ hiện thông báo nhận diện rồi nếu xuất hiện lại. Khi FAS đánh giá mặt là spoof, box chuyển đỏ và được gắn nhãn SPOOF. Nút capture lưu phần ảnh nằm trong ROI để xem khung ảnh đầu vào. Chọn camera bằng biến `CAMERA_INDEX` trong `.env` (mặc định `0`; webcam USB thường là `1` hoặc `2`). Đã tích hợp YOLOv8-face detection chạy bằng ONNX Runtime.
+PyQt6 desktop application for local face enrollment and recognition. The application processes camera frames on a worker thread, displays a live preview with a centered face ROI, and uses local ONNX models plus SQLite and FAISS. It currently reports recognition results; it does not write attendance records or control a door lock.
 
-## Chạy demo
+## Features and current scope
 
-Từ thư mục `attendance_app`:
+- Live camera preview, center ROI, face boxes, five landmarks, temporary ByteTrack IDs, and optional ROI image capture.
+- Five-pose enrollment saved locally: front, turn left, turn right, look down, and look up.
+- Recognition against locally enrolled face embeddings, with FAS and image-quality gates.
+- Responsive UI: the window sizes itself to the active monitor; recognition switches between side-by-side and stacked camera/result layouts; registration controls and page spacing compact on narrow windows.
+- SQLite is the durable source for employee and embedding data. FAISS is the local search index and can be rebuilt from SQLite.
+- OTP, hardware access control, door sensors, and synchronization modules are scaffolding and are not connected to the current enrollment/recognition flow.
+
+## Run
+
+From this directory:
 
 ```powershell
 uv sync
 uv run python main.py
 ```
 
-Hoặc cài dependencies từ `pyproject.toml` trong môi trường Python đang dùng rồi chạy `python main.py`. Demo dùng camera index 0. Cần cho phép quyền truy cập camera trong Windows. Nếu không mở camera được, UI báo trạng thái lỗi.
+Alternatively, install dependencies from `pyproject.toml` into a compatible Python 3.10+ environment and run `python main.py`. Grant the process permission to use the camera. Select the operating-system camera index with `CAMERA_INDEX` in `.env`.
 
-Nút **Capture ROI image** lưu phần ảnh ROI hiện tại dưới `data/captures/` (hoặc vị trí khác nếu bạn chọn trong hộp thoại). Ảnh capture được crop theo ROI; việc bấm chụp vẫn là thủ công. Detector hiện đếm và vẽ nhiều khuôn mặt nằm trong ROI, nhưng chỉ xử lý nhận diện khi có đúng một mặt. Demo chưa ghi công hay quyết định mở cửa.
-
-
-## ONNX face detector
-
-App dùng các model ONNX qua ONNX Runtime, sau đó gán track ID tạm thời bằng ByteTrack. Trên Windows x64 và Linux x86_64, app thử NVIDIA CUDA trước và tự fallback sang CPU nếu runtime/GPU không khởi tạo được; nền tảng khác dùng ONNX Runtime CPU. Log lúc khởi tạo model ghi provider được chọn trong terminal. Runtime không nạp file `.pt`, PyTorch hoặc Ultralytics. Preprocessing, giải mã raw YOLOv8-face pose heads, NMS và landmark mapping được thực hiện trong adapter của app.
-
-Model phải là file ONNX local. Đặt đường dẫn vào `FACE_DETECTOR_MODEL` trong `.env` ở thư mục `attendance_app`; đường dẫn tương đối được tính từ thư mục này. App không tải weights từ URL. Ví dụ:
-
-```dotenv
-FACE_DETECTOR_MODEL=weights/yolov8n-face.onnx
-CAMERA_INDEX=0
-FACE_DETECTOR_CONFIDENCE=0.50
-FACE_DETECTOR_IOU=0.50
-FACE_TRACKER_LOST_BUFFER=30
-FACE_EMBEDDER=ghostfacenet_onnx
-FACE_EMBEDDING_MODEL=../../benchmark/GhostFaceNets/weights/GhostFaceNet_W1.3_S1_ArcFace.onnx
-FACE_MATCH_THRESHOLD=1.60
-FACE_ANTISPOOF=mini_fas_onnx
-FACE_ANTISPOOF_MODEL=../../benchmark/face-antispoof-onnx/models/best/98.20/best_model.onnx
-FACE_ANTISPOOF_LOGIT_THRESHOLD=0.0
-```
-
-`FACE_DETECTOR_MODEL` là bắt buộc và phải trỏ tới file ONNX có sẵn trên máy.
-
-### Chuẩn bị thư mục weights và file `.env`
-
-Các model ONNX được giữ local và thư mục `attendance_app/weights/` đã được Git ignore. Tạo thư mục này nếu chưa có, rồi chép ba file model vào:
+Model files are local and are not downloaded by the application. The defaults expect:
 
 ```text
 attendance_app/
 ├── .env
+├── main.py
 └── weights/
     ├── yolov8n-face.onnx
     ├── GhostFaceNet_W1.3_S1_ArcFace.onnx
-    └── best_model.onnx
+    └── minifas.onnx
 ```
 
-Các file lần lượt là YOLOv8-face detector, GhostFaceNet embedder và MiniFAS anti-spoof. Model detector lấy từ benchmark `yolov8-face`, GhostFaceNet từ `benchmark/GhostFaceNets`, và FAS từ `benchmark/face-antispoof-onnx`. Đổi tên file khi chép vào `weights/` như sơ đồ trên hoặc sửa lại đường dẫn trong `.env` cho đúng tên file thực tế.
+Set model paths in `.env` if your files are elsewhere. Relative paths are resolved from the `attendance_app` directory. Do not commit private `.env` values or model files.
 
-Tạo file `attendance_app/.env` cạnh `main.py` và đặt cấu hình:
+## UI scaling and multiple displays
 
-```dotenv
-CAMERA_INDEX=0
-FACE_DETECTOR=yolov8_face_onnx
-FACE_DETECTOR_MODEL=weights/yolov8n-face.onnx
-FACE_DETECTOR_CONFIDENCE=0.50
-FACE_DETECTOR_IOU=0.50
-FACE_TRACKER_LOST_BUFFER=30
-FACE_EMBEDDER=ghostfacenet_onnx
-FACE_EMBEDDING_MODEL=weights/GhostFaceNet_W1.3_S1_ArcFace.onnx
-FACE_MATCH_THRESHOLD=1.60
-FACE_ANTISPOOF=mini_fas_onnx
-FACE_ANTISPOOF_MODEL=weights/best_model.onnx
-FACE_ANTISPOOF_LOGIT_THRESHOLD=0.0
-```
+At startup, the main window is centered and sized to fit the active monitor's available work area. When moved to another monitor, it keeps its position when possible and only moves/resizes if it would extend outside that monitor. The app uses a vertical scroll area on short displays so page controls are reachable instead of being cut off.
 
-Các đường dẫn tương đối được tính từ thư mục `attendance_app`, không phải từ working directory của terminal. Không commit `.env` hoặc model weights. Có thể giữ weights ở nơi khác và ghi đường dẫn tuyệt đối trong `.env` nếu muốn.
+On the recognition page, a wide window places the camera and latest-result panel side by side. Below the responsive breakpoint, they stack vertically. The header and footer also stack on narrow windows. The result portrait, page margins, and spacing shrink with the window. The registration page stacks its header and action buttons when narrow.
 
-Detector chỉ chạy trên crop ROI chính giữa. Kết quả box và 5 landmark được đổi về tọa độ frame đầy đủ rồi vẽ trên preview. `FACE_EMBEDDING_MODEL` phải trỏ tới file ONNX GhostFaceNet local; app không tải model từ URL. Có thể dùng đường dẫn tương đối với thư mục `attendance_app` hoặc đường dẫn tuyệt đối.
+The UI adapts its layout and preview area; it does not change the camera resolution, ONNX input size, or recognition thresholds based on monitor size. Actual usability depends on display resolution and desktop scaling, so check the target Raspberry Pi display after deployment.
 
-Khi có đúng một mặt, app chạy FAS trên frame gốc; chỉ frame Real mới tiếp tục qua quality check. Nếu quality đạt và mặt ổn định, app căn chỉnh năm landmark về 112×112, đổi BGR sang RGB rồi chạy GhostFaceNet ONNX. Preprocessing khớp benchmark: `(pixel - 127.5) * 0.0078125`; đầu ra được L2-normalize thành vector 512 chiều. Worker sinh embedding tối đa khoảng mỗi 10 frame. Recognition so embedding với local FAISS `IndexFlatL2`; ngưỡng mặc định `1.60` là squared L2 theo cách tính trong benchmark và có thể đổi bằng `FACE_MATCH_THRESHOLD`.
+## Frame processing
 
-Luồng nhận diện chạy theo thứ tự detect → FAS → quality → align → embedding. FAS luôn nhận frame camera gốc; nếu FAS báo Spoof thì quality và embedding được bỏ qua. Ying không còn chạy trong app để tránh tăng độ trễ.
+`CameraManager` continuously captures frames and retains the newest frame rather than building an inference queue. `FrameWorker` consumes the latest available frame, so intermediate camera frames are dropped when inference is slower than capture. The log line `Frame stats` reports camera FPS, worker FPS, dropped FPS, detector calls, recognition calls, embeddings, gate skips, and outcomes over the configured interval.
 
-MiniFAS ONNX phân loại Real/Spoof trên frame gốc ngay sau detect. Model local được cấu hình qua `FACE_ANTISPOOF_MODEL`; app không tải weights. Adapter giữ preprocessing của `benchmark/face-antispoof-onnx`: crop vuông quanh mặt mở rộng 1.5×, padding phản chiếu ở mép ảnh, resize/letterbox BGR thành 128×128 rồi chuẩn hóa `[0,1]` theo NCHW. Model xuất hai raw logits theo thứ tự class 0 = Real, class 1 = Spoof. App tính `score = real_logit - spoof_logit`; score lớn hơn hoặc bằng `FACE_ANTISPOOF_LOGIT_THRESHOLD` (mặc định `0.0`) là Real, thấp hơn là Spoof. UI hiển thị score và threshold trên cùng thang logits. Chỉ kết quả Real mới đi tiếp tới quality và embedding.
+The worker runs capture and model processing outside the Qt UI thread and emits preview/status signals to the pages. Preview emission is capped at 15 per second, but the actual preview rate is also limited by the worker's processing speed.
 
-Để xem dữ liệu FAS, app ghi đè hai ảnh mới nhất tại `data/fas_inputs/latest_crop.png` (crop vuông 1.5× trước resize) và `data/fas_inputs/latest_input_128.png` (ảnh BGR 128×128 sau letterbox, tương ứng ảnh đưa vào tensor). App lưu ở lần inference đầu và mỗi 30 lần sau để giảm I/O khi chạy liên tục.
+### Recognition flow
 
-Ảnh sau căn chỉnh landmark được ghi đè tại `data/aligned_inputs/latest_aligned_112.png` trước khi đưa vào GhostFaceNet, ở lần đầu và mỗi 30 lần sau. Ảnh này là input debug, không phải mẫu đăng ký trong gallery. Mẫu enrollment chỉ được lưu tại `data/enrollments/<employee_id>/` sau khi app thu đủ năm tư thế.
+For each worker frame:
 
-Đăng ký yêu cầu employee ID/tên; nhấn Enter ở ô ID để sang ô tên, rồi Enter hoặc bấm **Bắt đầu đăng ký** để xác nhận. App tự thu lần lượt năm pose: nhìn thẳng, quay trái, quay phải, cúi nhẹ và ngửa nhẹ. Với đúng một mặt trong ROI, worker chạy FAS trên frame gốc sau detect; quyết định FAS được làm mượt bằng điểm trung bình của ba frame để một frame nhiễu không chặn đăng ký. Nếu FAS báo Spoof ổn định, pipeline dừng. Nếu Real, worker kiểm tra yaw/pitch; khi pose đúng ở ít nhất 3/4 frame gần nhất và frame hiện tại vẫn đúng, mới chạy quality/ổn định → align → embedding. Nếu pose chưa đúng thì chỉ yêu cầu chỉnh pose, không chạy các bước sau FAS. Nếu quality chưa đạt thì hướng dẫn chỉnh sáng/giữ yên và chưa embed; embedding lỗi thì giữ nguyên pose và thử lại. Chỉ embedding mới hoàn tất mới xác nhận mẫu OK và chuyển sang pose tiếp theo. Khi bắt đầu lượt phân tích mới, embedding cũ bị loại khỏi trạng thái capture để không thể lưu nhầm cho pose kế tiếp. Quality và embedding được kiểm tra tối đa mỗi ba frame trong luồng registration; FAS chạy ngay sau mỗi lần detect một mặt. Embeddings và thông tin nhân viên được lưu trong SQLite local (`data/faces.sqlite3`); ảnh đã căn chỉnh 112×112 được lưu thành PNG trong `data/enrollments/<employee_id>/`. FAISS dùng `IndexIDMap(IndexFlatL2)` và ID của từng dòng embedding trong SQLite; search trả ID để truy vấn hồ sơ, không cần mảng metadata song song. Khi khởi động, app nạp `data/faces.faiss` nếu revision và các ID khớp SQLite; nếu file thiếu, cũ hoặc không đọc được thì mới dựng lại. Thêm nhân viên sẽ append năm vector mới; xóa nhân viên sẽ gỡ các vector mang ID của người đó. Nút **Rebuild FAISS index** ở màn hình nhận diện cho phép bảo trì thủ công từ SQLite. App không cần mạng sau khi cài dependencies và đặt các model ONNX local. Matching hiện hiển thị người gần nhất; chưa ghi attendance hay quyết định mở khóa.
+1. Crop the configured center ROI and run YOLOv8-face detection; update temporary tracks.
+2. Continue only when exactly one face is detected.
+3. Estimate head pose from the detector's five landmarks and reject poses outside the configured recognition limits.
+4. Run image-quality checks. A failed check ends processing for that frame.
+5. Run MiniFAS anti-spoofing. A spoof result ends processing for that frame.
+6. Align the face to 112×112 RGB, run GhostFaceNet, normalize the 512-D vector, and search the FAISS gallery.
+7. After a successful match, pause detection and recognition for `RECOGNITION_SUCCESS_COOLDOWN_SECONDS`; camera capture and preview continue. While matching is pending, the worker also skips new detection/inference to avoid accumulating work.
 
-Quality check chạy trên face crop và đánh giá kích thước box theo ROI, độ nét bằng Laplacian variance, độ sáng trung bình trên kênh L của LAB, góc yaw/pitch/roll ước lượng từ năm landmark, box có sát mép ROI không, và độ ổn định qua bốn frame. UI chỉ chạy quality check khi có đúng một mặt trong ROI. Các ngưỡng hiện là heuristic ban đầu, cần hiệu chỉnh theo camera và dữ liệu thực tế.
+A successful recognition result is sent to the UI, which shows the identity, aligned face, and squared-L2 distance. The cooldown is separate from guidance aggregation and is the time in which a person can see the result or hear an external announcement.
 
-ByteTrack gán ID tạm thời qua các frame; ID không phải danh tính và có thể đổi khi mặt rời vùng hoặc bị che. Face embedder và anti-spoof đều có interface/factory riêng để có thể thay model. FAISS dùng exact squared-L2 index; SQLite là nguồn lưu cục bộ bền vững cho nhân viên và vectors. Quality check không phân loại mắt mở/nhắm hay khẩu trang; FAS hiện là bước anti-spoof riêng trước embedding.
+### Enrollment flow
 
-Có thể đổi cấu hình bằng các biến môi trường `CAMERA_INDEX`, `FACE_DETECTOR`, `FACE_DETECTOR_MODEL`, `FACE_DETECTOR_CONFIDENCE`, `FACE_DETECTOR_IOU`, `FACE_TRACKER_LOST_BUFFER`, `FACE_EMBEDDER`, `FACE_EMBEDDING_MODEL`, `FACE_MATCH_THRESHOLD`, `FACE_ANTISPOOF`, `FACE_ANTISPOOF_MODEL` và `FACE_ANTISPOOF_LOGIT_THRESHOLD`. Các đường dẫn model tương đối được tính từ thư mục `attendance_app`. Buffer được tính theo số frame tại 30 FPS; giá trị 30 giữ track mất detection khoảng một giây. Tăng buffer có thể nối lại các hụt detection ngắn nhưng tăng nguy cơ gán nhầm ID. Để thêm detector, implement `FaceDetector.detect(frame_bgr)` rồi thêm builder vào `face/detector_factory.py`. Để thêm embedder, implement `FaceEmbedder` rồi thêm builder vào `face/embedding_factory.py`. Để thêm FAS, implement `FaceAntiSpoofDetector.predict(frame_bgr, detection)` rồi thêm builder vào `face/antispoof_factory.py`.
+Enter an employee ID and name, then start enrollment. The app captures five samples in this order: front, left, right, down, and up. The worker uses this order for each eligible frame:
 
-YOLOv8-face ONNX detector nằm local theo `FACE_DETECTOR_MODEL`; GhostFaceNet ONNX embedder nằm local theo `FACE_EMBEDDING_MODEL`. Ba model ONNX dùng chung session factory để chọn CUDA/CPU; `faiss-cpu` phục vụ local vector search, SQLite lưu dữ liệu offline, `python-dotenv` đọc `.env`, và package `trackers` cung cấp ByteTrack. Trên Windows x64 và Linux x86_64, `uv sync` cài ONNX Runtime GPU cùng thư viện CUDA/cuDNN để app tự dùng CUDA khi máy hỗ trợ. GPU CUDA yêu cầu phần cứng NVIDIA và driver tương thích; nếu provider không khởi tạo được thì app fallback CPU. Những nền tảng khác cài ONNX Runtime CPU.
-Trên Windows x64 và Linux x86_64, `uv sync` cài ONNX Runtime GPU, trong đó vẫn có CPU provider để fallback. CUDA cần GPU NVIDIA, driver và CUDA/cuDNN runtime tương thích được cài trên máy; nếu CUDA provider không khởi tạo được thì app dùng CPU. Những nền tảng khác cài ONNX Runtime CPU.
+1. Require exactly one face in the ROI.
+2. Estimate pose and check that it matches the currently requested enrollment pose.
+3. Evaluate face size/framing, sharpness, brightness, and pose limits.
+4. Run MiniFAS on the frame; reject it if classified as spoof.
+5. Align and embed the accepted frame. Only after the embedding signal reaches the session does the UI advance to the next pose.
 
-## Đánh giá ảnh với thuật toán Ying 2017
+A failed stage ends that frame; the next worker frame starts the checks again. There is no queue of old camera frames. The current implementation does not average FAS scores across frames or require a multi-frame pose vote before embedding. The session saves the employee only after all five distinct poses have been captured successfully.
 
-Từ thư mục `attendance_app`, chạy:
+## Models and preprocessing
 
-```powershell
-uv run python evaluate_ying.py
-```
+### YOLOv8-face ONNX
 
-Script đọc ảnh trong `data/captures/`, áp dụng thuật toán `Ying_2017_CAIP` và ghi kết quả vào `data/ying_quality_review/`:
+The detector runs on the center ROI. Its adapter letterboxes the BGR camera frame, converts it to RGB NCHW float input in `[0,1]`, decodes the exported raw YOLOv8-face DFL/score/landmark heads, applies confidence filtering and NMS, then maps boxes and landmarks back to the camera frame. ByteTrack IDs are temporary tracking labels, not employee identities.
 
-- `comparisons/`: ảnh gốc và ảnh sau xử lý đặt cạnh nhau để kiểm tra trực quan.
-- `enhanced/`: ảnh sau xử lý.
-- `quality_report.csv`: độ sáng trung bình, độ tương phản, độ nét Laplacian và tỷ lệ pixel quá tối/quá sáng trước/sau xử lý.
+### MiniFAS ONNX
 
-Có thể chỉ định thư mục khác bằng `--input-dir` và `--output-dir`. Các chỉ số chỉ hỗ trợ so sánh ảnh, không tự kết luận ảnh đủ tốt cho nhận diện khuôn mặt; cần xem thêm ảnh đối chiếu và kiểm tra bằng pipeline nhận diện thực tế.
+FAS uses the local model configured by `FACE_ANTISPOOF_MODEL`. The adapter expands a square face crop, pads at image boundaries, resizes/letterboxes to 128×128, and prepares the model tensor. For the current two-class model, class 0 is Real and class 1 is Spoof. The app compares `real_logit - spoof_logit` with `FACE_ANTISPOOF_LOGIT_THRESHOLD`; a larger value is more favorable to Real. The UI can show the score and threshold. Debug inputs are overwritten at `data/fas_inputs/latest_crop.png` and `data/fas_inputs/latest_input_128.png` on the first inference and periodically afterward.
 
-## Nguyên tắc hoạt động dự kiến
+### GhostFaceNet embedding and matching
 
-- Khi khởi động, app vào màn hình nhận diện; sau này recognition và access decision chạy cục bộ để hỗ trợ offline.
-- Đăng ký khuôn mặt là luồng có quyền. Device chỉ chuyển sang đăng ký khi có phiên hợp lệ hoặc quản trị viên đã xác thực.
-- OTP là một cách mở phiên đăng ký; OTP cần gắn với phiên/người, có hạn dùng và giới hạn số lần thử.
-- Sau khi đăng ký thành công, bị hủy hoặc hết hạn, app quay lại nhận diện.
-- Camera frame processing chạy ngoài UI thread để giao diện không bị treo.
+The five detector landmarks are aligned to 112×112. The aligned image is converted from BGR to RGB and normalized with `(pixel - 127.5) * 0.0078125`. The model output is L2-normalized to 512 dimensions. The aligned input debug image is periodically written to `data/aligned_inputs/latest_aligned_112.png`.
 
-## Cấu trúc thư mục
+The app searches exact squared-L2 distance with FAISS `IndexFlatL2`; smaller distances indicate closer vectors. Because both vectors are normalized, `cosine_similarity = 1 - squared_L2 / 2`. The threshold is deployment configuration, not a threshold supplied by GhostFaceNets. Calibrate it with same-person and different-person samples from the target camera before relying on identity decisions. The current gallery stores five pose vectors per person and searches the nearest individual vector; it does not average them into one prototype.
 
-| Thư mục / file | Trách nhiệm |
+## Image-quality and pose checks
+
+The app's quality checker is a lightweight heuristic, not the separate `benchmark/face-quality-analizer` service. It checks face-box size relative to the ROI, distance from ROI edges, Laplacian variance for sharpness, mean LAB-L brightness, and pose estimated from five landmarks with `solvePnP`. It does not classify eye openness, mouth state, or masks. The thresholds are camera-dependent and should be calibrated at the deployment distance and lighting.
+
+Enrollment pose is checked before quality and FAS. Recognition checks pose, then quality, then FAS. Both flows stop early on a failed stage so later models do not run for that frame.
+
+## Configuration reference
+
+The application loads `attendance_app/.env` at startup. Only variables present in the environment override the defaults below. The checked-in `.env` currently sets the camera/model paths, detector parameters, tracker buffer, enrollment/recognition pose and quality limits, recognition UI timing, cooldown, and `FACE_MATCH_THRESHOLD=1.30`.
+
+| Variable | Default | Purpose |
+|---|---:|---|
+| `CAMERA_INDEX` | `0` | Operating-system camera index. |
+| `FACE_DETECTOR` | `yolov8_face_onnx` | Detector adapter name. |
+| `FACE_DETECTOR_MODEL` | unset | Required local detector ONNX path. |
+| `FACE_DETECTOR_CONFIDENCE` | `0.50` | Minimum face detection confidence. |
+| `FACE_DETECTOR_IOU` | `0.50` | NMS IoU threshold. |
+| `FACE_TRACKER_LOST_BUFFER` | `30` | Tracker lost-frame buffer (approximately one second at 30 FPS). |
+| `FACE_EMBEDDER` | `ghostfacenet_onnx` | Embedding adapter name. |
+| `FACE_EMBEDDING_MODEL` | unset | Required local embedding ONNX path. |
+| `FACE_MATCH_THRESHOLD` | `1.60` | Maximum accepted squared-L2 distance; smaller is stricter. The checked-in `.env` overrides this to `1.30`. |
+| `FACE_ANTISPOOF` | `mini_fas_onnx` | Anti-spoof adapter name. |
+| `FACE_ANTISPOOF_MODEL` | unset | Required local MiniFAS ONNX path. |
+| `FACE_ANTISPOOF_LOGIT_THRESHOLD` | `0.0` | Minimum `real_logit - spoof_logit` accepted as Real. |
+| `FACE_POSE_FRONT_MAX_YAW` | `22` | Maximum absolute yaw for front enrollment pose, degrees. |
+| `FACE_POSE_FRONT_MAX_PITCH` | `27` | Maximum absolute pitch for front enrollment pose, degrees. |
+| `FACE_POSE_TURN_MIN_ANGLE` | `9` | Minimum relative yaw for left/right pose. `.env` currently sets `18`. |
+| `FACE_POSE_TURN_MAX_ANGLE` | `40` | Maximum relative yaw for left/right pose. |
+| `FACE_POSE_PITCH_MIN_ANGLE` | `5` | Minimum relative pitch for down/up pose. |
+| `FACE_POSE_PITCH_MAX_ANGLE` | `25` | Maximum relative pitch for down/up pose. |
+| `FACE_POSE_CROSS_AXIS_MAX_ANGLE` | `28` | Maximum deviation on the other pose axis. |
+| `FACE_RECOGNITION_MAX_YAW_DEGREES` | `55` | Recognition yaw limit. |
+| `FACE_RECOGNITION_MAX_PITCH_DEGREES` | `45` | Recognition pitch limit. |
+| `FACE_RECOGNITION_MAX_ROLL_DEGREES` | `45` | Recognition roll limit. |
+| `FACE_QUALITY_MIN_FACE_HEIGHT_RATIO` | `0.40` | Minimum face height relative to ROI for recognition. |
+| `FACE_QUALITY_MIN_FACE_WIDTH_RATIO` | `0.20` | Minimum face width relative to ROI for recognition. |
+| `FACE_QUALITY_MAX_FACE_HEIGHT_RATIO` | `0.78` | Maximum face height relative to ROI for recognition. |
+| `FACE_QUALITY_MAX_FACE_WIDTH_RATIO` | `0.85` | Maximum face width relative to ROI for recognition. |
+| `FACE_QUALITY_MIN_BLUR_SCORE` | `100` | Minimum Laplacian variance for recognition. |
+| `FACE_QUALITY_MIN_BRIGHTNESS` | `80` | Minimum mean LAB-L brightness for recognition (0–255). |
+| `FACE_QUALITY_MAX_BRIGHTNESS` | `220` | Maximum mean LAB-L brightness for recognition (0–255). |
+| `FACE_QUALITY_EDGE_MARGIN_RATIO` | `0.015` | Minimum distance from ROI edges for recognition. |
+| `FACE_QUALITY_REGISTRATION_MIN_FACE_HEIGHT_RATIO` | `0.45` | Minimum face height relative to ROI for enrollment. |
+| `FACE_QUALITY_REGISTRATION_MIN_FACE_WIDTH_RATIO` | `0.24` | Minimum face width relative to ROI for enrollment. |
+| `FACE_QUALITY_REGISTRATION_MAX_FACE_HEIGHT_RATIO` | `0.72` | Maximum face height relative to ROI for enrollment. |
+| `FACE_QUALITY_REGISTRATION_MAX_FACE_WIDTH_RATIO` | `0.80` | Maximum face width relative to ROI for enrollment. |
+| `FACE_QUALITY_REGISTRATION_MIN_BLUR_SCORE` | `130` | Minimum Laplacian variance for enrollment. |
+| `FACE_QUALITY_REGISTRATION_MIN_BRIGHTNESS` | `90` | Minimum mean LAB-L brightness for enrollment. |
+| `FACE_QUALITY_REGISTRATION_MAX_BRIGHTNESS` | `210` | Maximum mean LAB-L brightness for enrollment. |
+| `FACE_QUALITY_REGISTRATION_EDGE_MARGIN_RATIO` | `0.03` | Minimum distance from ROI edges for enrollment. |
+| `FACE_QUALITY_REGISTRATION_MAX_YAW` | `40` | Maximum absolute yaw accepted by enrollment quality check. |
+| `FACE_QUALITY_REGISTRATION_MAX_PITCH` | `25` | Maximum absolute pitch accepted by enrollment quality check. |
+| `FACE_QUALITY_REGISTRATION_MAX_ROLL` | `20` | Maximum absolute roll accepted by enrollment quality check. |
+| `RECOGNITION_UI_WINDOW_SECONDS` | `0.5` | Time window used to aggregate UI guidance. |
+| `RECOGNITION_UI_UPDATE_INTERVAL_SECONDS` | `0.5` | UI guidance refresh interval. |
+| `RECOGNITION_UI_MIN_SAMPLES` | `3` | Minimum recent outcomes before choosing guidance. |
+| `RECOGNITION_SUCCESS_COOLDOWN_SECONDS` | `1.0` | Pause detection/recognition after a successful match; camera preview remains live. |
+| `FRAME_WORKER_STATS_INTERVAL_SECONDS` | `1.0` | Interval for frame and processing-rate log statistics. |
+| `RECOGNITION_NO_FACE_DEBOUNCE` | `2` | Consecutive no-face outcomes before showing that guidance. |
+| `RECOGNITION_MULTIPLE_FACES_DEBOUNCE` | `2` | Consecutive multiple-face outcomes before showing that guidance. |
+| `RECOGNITION_SESSION_REARM_SECONDS` | `2.0` | No-face duration before clearing the current recognition session's seen-person state. |
+
+Values from `.env` take precedence over defaults. Paths may be absolute or relative to `attendance_app`.
+
+## Local data
+
+- `data/faces.sqlite3`: employee records and five pose embeddings per employee.
+- `data/faces.faiss`: persisted exact-L2 search index, rebuilt when missing or stale.
+- `data/enrollments/<employee_id>/`: aligned enrollment images.
+- `data/aligned_inputs/latest_aligned_112.png`: latest periodic embedding input debug image.
+- `data/fas_inputs/`: latest periodic FAS crop and 128×128 input debug images.
+- `data/captures/`: default starting directory for manually captured ROI images.
+
+The UI's **Rebuild FAISS index** action rebuilds the search index from SQLite; it does not delete enrollment records.
+
+## Raspberry Pi and performance notes
+
+On Linux ARM, `pyproject.toml` selects the ONNX Runtime CPU package rather than the x86-64 CUDA package. Expect inference throughput to depend on the Pi model, camera resolution, cooling, and model sizes. The latest-frame design drops stale frames instead of queueing them, keeping the preview responsive at the cost of processing fewer frames than the camera captures. Check `Frame stats` logs on the target device.
+
+Use a 64-bit Raspberry Pi OS and confirm that all dependencies in `pyproject.toml` have compatible wheels for the selected Pi/Python version. The UI adapts to monitor dimensions, but the model input sizes remain fixed.
+
+## Source layout
+
+| Path | Responsibility |
 |---|---|
-| `main.py` | Entry point chạy demo. |
-| `config/` | Cấu hình runtime và logging. |
-| `app/` | Khởi tạo ứng dụng, điều phối chế độ và giữ trạng thái chung. |
-| `ui/` | Cửa sổ PyQt, các trang và widget tái sử dụng. |
-| `ui/pages/recognition_page.py` | Preview camera, panel ảnh/kết quả nhận diện gần nhất, trạng thái nhận diện lặp, FAS và nút lưu ảnh crop theo ROI. |
-| `ui/pages/registration_page.py` | Hướng dẫn và capture năm pose, lưu embedding nhân viên local. |
-| `ui/pages/otp_page.py` | Nhập OTP/xác nhận phiên (khung cho luồng tương lai). |
-| `ui/pages/device_status_page.py` | Trạng thái camera, mạng, đồng bộ và phần cứng. |
-| `ui/widgets/` | Widget dùng lại như camera view, status badge và message banner. |
-| `ui/resources/` | Stylesheet và tài nguyên giao diện. |
-| `camera/` | Mở/đóng camera và chuyển frame sang UI qua worker thread. |
-| `face/` | Giao diện detector/FAS/embedder, adapter ONNX, tracking ByteTrack, kiểm tra chất lượng, alignment và pipeline detect-to-embedding. |
-| `face/embedding.py` | Interface `FaceEmbedder` và adapter GhostFaceNet ONNX; chuẩn bị ảnh aligned và chuẩn hóa vector. |
-| `face/embedding_factory.py` | Chọn adapter embedding theo cấu hình. |
-| `face/antispoof.py` | Interface anti-spoof, MiniFAS ONNX adapter, preprocessing và lưu ảnh đầu vào debug. |
-| `face/antispoof_factory.py` | Chọn adapter anti-spoof theo cấu hình. |
-| `face/enhancement.py` | Interface tăng cường ảnh và adapter Ying 2017 cho crop mặt đã detect. |
-| `face/enhancement_factory.py` | Chọn thuật toán tăng cường ảnh theo cấu hình. |
-| `face/ying.py` | Cài đặt thuật toán tăng cường độ sáng Ying 2017. |
-| `face/pipeline.py` | Chạy FAS trước; chỉ align và tạo embedding nếu kết quả là Real. |
-| `storage/database.py` | SQLite local cho nhân viên và embedding samples. |
-| `storage/vector_store.py` | Interface vector store và local FAISS exact-L2 index. |
-| `registration/registration_service.py` | Lưu hồ sơ và 5 pose embeddings của nhân viên. |
-| `ui/pages/registration_page.py` | Hướng dẫn camera và capture năm pose enrollment. |
-| `recognition/` | Điều phối nhận diện và áp dụng chính sách allow/deny. |
-| `registration/` | Phiên đăng ký, xác thực OTP, capture policy và lưu khuôn mặt. |
-| `hardware/` | Adapter điều khiển khóa, cảm biến cửa và màn hình trạng thái. |
-| `storage/` | Database cục bộ, vector store và repositories cho dữ liệu offline. |
-| `sync/` | API client, đồng bộ hai chiều và hàng đợi retry khi mất mạng. |
-| `common/` | Domain models, events, lỗi và ROI dùng chung giữa UI/service. |
-| `weights/` | ONNX model YOLOv8-face dự phòng và license đi kèm. |
+| `main.py` | Application entry point. |
+| `app/` | Application bootstrap and state. |
+| `config/` | Environment-backed runtime configuration and logging. |
+| `camera/` | Camera capture and worker-thread frame processing. |
+| `face/` | ONNX detector, anti-spoof, quality, alignment, embedding, and tracking adapters. |
+| `recognition/` | Per-frame recognition pipeline and gallery controller. |
+| `registration/` | Five-pose registration flow, session, and persistence service. |
+| `storage/` | SQLite, repositories, and FAISS vector store. |
+| `ui/` | Responsive PyQt window, pages, camera preview, and guidance aggregation. |
+| `sync/`, `hardware/` | Future integration scaffolding; not part of the active local demo flow. |
+| `weights/` | Local model files; ignored by Git. |
 
-## Luồng dự kiến sau khi tích hợp model
+## Limitations
 
-`Camera → Face Pipeline → Local Matcher → Access Decision → Door Controller + Access Log`
-
-Luồng đăng ký OTP dự kiến: tạo phiên đăng ký → nhập/xác thực OTP → capture → quality check → embedding/duplicate check → lưu cục bộ → xếp hàng đồng bộ → quay lại nhận diện.
-
-Các module nhận diện danh tính, lưu trữ, đồng bộ và phần cứng vẫn là file khung. Detector ONNX đã được nối vào preview nhưng chưa được benchmark trên thiết bị đích; app chưa ghi chấm công hay điều khiển khóa.
-
-
-
+- The app is a local prototype; it does not record attendance, authorize door access, or sync enrollment data.
+- Quality and pose thresholds are heuristics and need evaluation with target cameras and lighting.
+- Face matching threshold must be calibrated with representative same-person and different-person data; the current `.env` value is not a vendor-certified operating point.
+- ByteTrack IDs are temporary and can change after occlusion or missed detections.
+- Camera read failure currently stops the worker and reports a camera error; a transient-failure retry policy is not implemented.
