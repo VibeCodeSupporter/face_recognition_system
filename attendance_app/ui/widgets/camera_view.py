@@ -18,7 +18,7 @@ class CameraView(QLabel):
         self._spoof_detected = False
         self._spoof_track_id: int | None = None
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setMinimumSize(640, 360)
+        self.setMinimumSize(320, 180)
         self.setText("Đang khởi động camera…")
         self.setObjectName("cameraView")
 

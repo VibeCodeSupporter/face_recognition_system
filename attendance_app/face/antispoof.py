@@ -68,10 +68,12 @@ class MiniFASOnnxDetector:
         expanded_crop = crop_face_for_fas(
             frame_bgr, detection.bbox, self.BBOX_EXPANSION
         )
-        model_image_bgr, tensor = preprocess_fas(expanded_crop, self.INPUT_SIZE)
+        expanded_crop_rgb = cv2.cvtColor(expanded_crop, cv2.COLOR_BGR2RGB)
+        model_image_rgb, tensor = preprocess_fas(expanded_crop_rgb, self.INPUT_SIZE)
         self._debug_save_calls += 1
         if self._debug_save_calls == 1 or self._debug_save_calls % 30 == 0:
             self.debug_dir.mkdir(parents=True, exist_ok=True)
+            model_image_bgr = cv2.cvtColor(model_image_rgb, cv2.COLOR_RGB2BGR)
             self._save_debug_images(expanded_crop, model_image_bgr)
         logits = np.asarray(
             self.session.run(
@@ -157,14 +159,14 @@ def crop_face_for_fas(
 
 
 def preprocess_fas(
-    image_bgr: np.ndarray, size: int = 128
+    image_rgb: np.ndarray, size: int = 128
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Match infer_image.py: BGR, letterbox, [0,1], then NCHW batch."""
-    height, width = image_bgr.shape[:2]
+    """Resize an RGB crop to a letterboxed [0,1] NCHW model tensor."""
+    height, width = image_rgb.shape[:2]
     scale = size / max(height, width)
     new_width, new_height = int(width * scale), int(height * scale)
     interpolation = cv2.INTER_LANCZOS4 if scale > 1.0 else cv2.INTER_AREA
-    resized = cv2.resize(image_bgr, (new_width, new_height), interpolation=interpolation)
+    resized = cv2.resize(image_rgb, (new_width, new_height), interpolation=interpolation)
     pad_width, pad_height = size - new_width, size - new_height
     model_image = cv2.copyMakeBorder(
         resized,
