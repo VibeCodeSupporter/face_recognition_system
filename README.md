@@ -39,6 +39,7 @@ Sơ đồ luồng tổng quát:
 
 ## Tài liệu
 
-- [Web portal kết nối backend thật](web_test_api/README.md): chạy backend rồi mở trực tiếp `http://127.0.0.1:5000/` để đăng nhập quản trị.
+- [Web Portal React hiện đại](web_portal/README.md): Giao diện quản trị hiện đại viết bằng React 19 + Ant Design kết nối API backend.
+- [Web Test API tĩnh](web_test_api/README.md): Giao diện web kiểm thử backend nhanh (serve trực tiếp từ backend tại `http://127.0.0.1:5000/`).
 - [Backend Python và API](backend/README.md)
 - [Tài liệu kiến trúc hệ thống](docs/face_recognition_access_control_architecture.md)

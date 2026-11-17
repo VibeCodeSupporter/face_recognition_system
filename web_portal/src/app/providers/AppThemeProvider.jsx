@@ -1,17 +1,17 @@
 import { useMemo } from 'react'
 import { App as AntdApp, ConfigProvider } from 'antd'
-import usePrefersDarkMode from '../hooks/usePrefersDarkMode.js'
 import createAntdTheme from '../theme/antdTheme.js'
 
 /**
- * Bọc toàn bộ ứng dụng bằng ConfigProvider (design token của antd) và
- * antd App (cung cấp context cho message/notification/modal).
+ * Cung cấp Ant Design Theme chuẩn Light sáng sủa, rực rỡ,
+ * cố định màu sắc hài hòa Xanh da trời & Vàng ấm, không bị biến đổi
+ * hay xung đột khi hệ điều hành máy tính bật Dark Mode.
  *
  * @param {{ children: React.ReactNode }} props
  */
 export default function AppThemeProvider({ children }) {
-  const isDarkMode = usePrefersDarkMode()
-  const themeConfig = useMemo(() => createAntdTheme(isDarkMode), [isDarkMode])
+  // Cố định theme sáng sủa, rõ nét, loại bỏ lỗi chữ trắng nền trắng
+  const themeConfig = useMemo(() => createAntdTheme(false), [])
 
   return (
     <ConfigProvider theme={themeConfig}>

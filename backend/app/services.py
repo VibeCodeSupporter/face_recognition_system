@@ -202,6 +202,39 @@ class AuthService:
         except Exception:
             raise AppError(401, "UNAUTHORIZED", "Token xác thực không hợp lệ.") from None
 
+    def update_profile(self, username: str, full_name: str | None = None, new_password: str | None = None) -> dict:
+        import json
+        admins = self._get_admins()
+        current = admins.get(username, {
+            "password": "admin123",
+            "full_name": "Quản trị viên Hệ thống",
+            "role": "admin",
+        })
+        if full_name:
+            current["full_name"] = full_name.strip()
+        if new_password:
+            current["password"] = new_password
+
+        stored = {}
+        if self.admin_file.is_file():
+            try:
+                with open(self.admin_file, "r", encoding="utf-8") as f:
+                    loaded = json.load(f)
+                    if isinstance(loaded, dict):
+                        stored = loaded
+            except Exception:
+                pass
+        stored[username] = current
+        self._ensure_admin_dir()
+        with open(self.admin_file, "w", encoding="utf-8") as f:
+            json.dump(stored, f, ensure_ascii=False, indent=2)
+
+        return {
+            "username": username,
+            "full_name": current["full_name"],
+            "role": current.get("role", "admin"),
+        }
+
 
 class Services:
     def __init__(self, repositories: Repositories, settings=None):

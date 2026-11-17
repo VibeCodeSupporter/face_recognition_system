@@ -1,5 +1,12 @@
 import logging
+import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
+
+# Đảm bảo thư mục 'backend' luôn nằm trong sys.path để import được package 'app'
+_BACKEND_DIR = Path(__file__).resolve().parent.parent
+if str(_BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(_BACKEND_DIR))
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -55,9 +62,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         503: {"model": ErrorResponse, "description": "Database unavailable."},
     })
 
-    frontend_path = BACKEND_ROOT.parent / settings.frontend_dir
-    if not frontend_path.is_dir():
-        frontend_path = BACKEND_ROOT.parent / "web_test_api"
+    raw_frontend_dir = getattr(settings, "frontend_dir", "web_portal")
+    frontend_path = BACKEND_ROOT.parent / raw_frontend_dir
+
+    # Nếu trỏ vào thư mục web_portal có chứa 'dist' đã build thì ưu tiên dùng 'dist'
+    if (frontend_path / "dist").is_dir() and (frontend_path / "dist" / "index.html").is_file():
+        frontend_path = frontend_path / "dist"
+    elif not frontend_path.is_dir():
+        dist_path = BACKEND_ROOT.parent / "web_portal" / "dist"
+        if dist_path.is_dir() and (dist_path / "index.html").is_file():
+            frontend_path = dist_path
+        else:
+            frontend_path = BACKEND_ROOT.parent / "web_test_api"
 
     if frontend_path.is_dir():
         application.mount("/portal", StaticFiles(directory=frontend_path, html=True), name="portal")
@@ -99,3 +115,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return error_response(request, 500, "INTERNAL_ERROR", "The request could not be completed.")
 
     return application
+
+
+if __name__ == "__main__":
+    import uvicorn
+    app_settings = load_settings()
+    app = create_app(app_settings)
+    uvicorn.run(app, host=app_settings.host, port=app_settings.port)

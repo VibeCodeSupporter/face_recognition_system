@@ -5,7 +5,7 @@ from fastapi import APIRouter, Query, Request, Response, Security
 from fastapi.security import APIKeyHeader
 
 from app.dto.access_logs import AccessLogCreate, AccessLogQuery
-from app.dto.auth import LoginRequest
+from app.dto.auth import LoginRequest, ProfileUpdateRequest
 from app.dto.devices import DeviceCreate, DevicePatch, DeviceQuery
 from app.dto.face_embeddings import FaceEmbeddingPut
 from app.dto.registration_sessions import SessionCreate, SessionPatch, SessionQuery
@@ -39,6 +39,24 @@ def get_me(request: Request):
             "role": admin.get("role", "admin"),
         }
     }
+
+
+@router.patch("/auth/profile", tags=["Auth"])
+def update_profile(request: Request, body: ProfileUpdateRequest):
+    admin = getattr(request.state, "admin", None)
+    if not admin:
+        auth_header = request.headers.get("authorization", "")
+        if auth_header.lower().startswith("bearer "):
+            token = auth_header[7:].strip()
+            admin = request.app.state.services.auth.verify_token(token)
+    if not admin:
+        from app.errors import AppError
+        raise AppError(401, "UNAUTHORIZED", "Yêu cầu đăng nhập quản trị viên.")
+    username = admin.get("sub", "admin")
+    updated = request.app.state.services.auth.update_profile(
+        username, full_name=body.full_name, new_password=body.new_password
+    )
+    return {"data": updated}
 
 
 @router.post("/auth/logout", tags=["Auth"])
