@@ -8,8 +8,7 @@ from typing import Protocol, runtime_checkable
 import cv2
 import numpy as np
 from face.onnx_runtime import create_inference_session
-
-_ALIGN_DEBUG_SAVE_CALLS = 0
+from face.debug_images import save_module_input
 
 
 @runtime_checkable
@@ -94,8 +93,9 @@ def align_and_embed(
 def align_face_rgb(
     frame_bgr: np.ndarray,
     landmarks: tuple[tuple[float, float, float], ...],
+    *, frame_id: int | None = None,
 ) -> np.ndarray:
-    """Align a face, save the latest debug image, and return RGB pixels."""
+    """Align a face to GhostFaceNet's 112x112 input and return RGB pixels."""
     from face.alignment import align_face
 
     if not has_reliable_landmarks(landmarks):
@@ -103,16 +103,9 @@ def align_face_rgb(
     aligned_bgr = align_face(
         frame_bgr, [(point[0], point[1]) for point in landmarks], (112, 112)
     )
+    if frame_id is not None:
+        save_module_input("ghostfacenet", frame_id, aligned_bgr, variant="aligned_112")
     aligned_rgb = cv2.cvtColor(aligned_bgr, cv2.COLOR_BGR2RGB)
-    global _ALIGN_DEBUG_SAVE_CALLS
-    _ALIGN_DEBUG_SAVE_CALLS += 1
-    if _ALIGN_DEBUG_SAVE_CALLS == 1 or _ALIGN_DEBUG_SAVE_CALLS % 30 == 0:
-        debug_dir = Path(__file__).resolve().parents[1] / "data" / "aligned_inputs"
-        debug_dir.mkdir(parents=True, exist_ok=True)
-        debug_path = debug_dir / "latest_aligned_112.png"
-        aligned_bgr = cv2.cvtColor(aligned_rgb, cv2.COLOR_RGB2BGR)
-        if not cv2.imwrite(str(debug_path), aligned_bgr):
-            raise OSError(f"Could not save aligned face image: {debug_path}")
     return aligned_rgb
 
 

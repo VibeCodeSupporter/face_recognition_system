@@ -1,11 +1,11 @@
-﻿"""Shared normalized face-capture region used by the UI and detector."""
+"""Shared normalized face-capture region used by the UI and detector."""
 
 from __future__ import annotations
 
 import numpy as np
 
 # (x, y, width, height), normalized relative to the camera frame.
-FACE_ROI = (0.22, 0.08, 0.56, 0.84)
+FACE_ROI = (0.24, 0.10, 0.52, 0.80)
 
 
 def face_roi_bounds(frame_width: int, frame_height: int) -> tuple[int, int, int, int]:

@@ -111,6 +111,8 @@ class MainWindow(QMainWindow):
         self.registration_page.start_camera()
 
     def show_recognition(self) -> None:
+        if self.registration_page.enrollment_started:
+            return
         self.registration_page.stop_camera()
         self.pages.setCurrentWidget(self.recognition_page)
         self.recognition_page.start_camera()

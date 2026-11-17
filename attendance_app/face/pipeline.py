@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import time
 
+import cv2
 import numpy as np
 
 from face.detector import FaceDetection
@@ -45,9 +46,10 @@ class FacePipeline:
         self.model_name = model_name
 
     def embed_detection(
-        self, frame_bgr: np.ndarray, detection: FaceDetection
+        self, frame_bgr: np.ndarray, detection: FaceDetection,
+        *, frame_id: int | None = None,
     ) -> FaceEmbedding:
-        aligned_rgb = self.align_detection(frame_bgr, detection)
+        aligned_rgb = self.align_detection(frame_bgr, detection, frame_id=frame_id)
         vector = self.embed_aligned(aligned_rgb)
         return FaceEmbedding(
             vector=vector,
@@ -59,10 +61,11 @@ class FacePipeline:
 
     @staticmethod
     def align_detection(
-        frame_bgr: np.ndarray, detection: FaceDetection
+        frame_bgr: np.ndarray, detection: FaceDetection,
+        *, frame_id: int | None = None,
     ) -> np.ndarray:
         try:
-            return align_face_rgb(frame_bgr, detection.landmarks)
+            return align_face_rgb(frame_bgr, detection.landmarks, frame_id=frame_id)
         except Exception as error:
             raise AlignmentError(str(error)) from error
 

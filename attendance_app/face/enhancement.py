@@ -9,7 +9,6 @@ import cv2
 import numpy as np
 
 from face.detector import FaceDetection
-from face.antispoof import crop_face_for_fas
 from face.ying import Ying_2017_CAIP
 
 
@@ -38,9 +37,18 @@ class Ying2017FaceEnhancer:
     def enhance_detection(
         self, frame_bgr: np.ndarray, detection: FaceDetection
     ) -> np.ndarray:
-        crop = crop_face_for_fas(
-            frame_bgr, detection.bbox, expansion=self.CROP_EXPANSION
+        x1, y1, x2, y2 = detection.bbox
+        side = max(1, int(max(x2 - x1, y2 - y1) * self.CROP_EXPANSION))
+        center_x, center_y = (x1 + x2) / 2.0, (y1 + y2) / 2.0
+        left, top = int(center_x - side / 2), int(center_y - side / 2)
+        right, bottom = left + side, top + side
+        height, width = frame_bgr.shape[:2]
+        crop = frame_bgr[max(0, top):min(height, bottom), max(0, left):min(width, right)]
+        crop = cv2.copyMakeBorder(
+            crop, max(0, -top), max(0, bottom - height),
+            max(0, -left), max(0, right - width), cv2.BORDER_REFLECT_101,
         )
+        crop = cv2.resize(crop, (side, side))
         enhanced_crop = Ying_2017_CAIP(crop)
         self._calls += 1
         if self._calls % 10 == 1:

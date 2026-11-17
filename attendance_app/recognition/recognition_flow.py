@@ -66,7 +66,7 @@ class RecognitionFlow:
             )
 
         quality = self.quality_checker.evaluate(
-            frame_bgr, detection
+            frame_bgr, detection, frame_id=frame_number
         )
         if not quality.passed:
             return RecognitionFrameResult(
@@ -74,7 +74,9 @@ class RecognitionFlow:
                 "NOT_EVALUATED", quality, None, None,
             )
 
-        fas_result = self.pipeline.anti_spoof.predict(frame_bgr, detection)
+        fas_result = self.pipeline.anti_spoof.predict(
+            frame_bgr, detection, frame_id=frame_number
+        )
         if not fas_result.is_real:
             return RecognitionFrameResult(
                 frame_number, timestamp, 1, "FAS_FAIL", "PASS", "PASS",
@@ -82,7 +84,9 @@ class RecognitionFlow:
             )
 
         try:
-            aligned_rgb = self.pipeline.align_detection(frame_bgr, detection)
+            aligned_rgb = self.pipeline.align_detection(
+                frame_bgr, detection, frame_id=frame_number
+            )
         except AlignmentError as error:
             return RecognitionFrameResult(
                 frame_number, timestamp, 1, "ALIGNMENT_FAIL", "PASS", "PASS",

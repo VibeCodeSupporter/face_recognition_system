@@ -12,6 +12,7 @@ from common.face_region import face_roi_bounds
 from config import settings
 from face.detector import FaceDetection
 from face.embedding import has_reliable_landmarks
+from face.debug_images import save_module_input
 
 
 @dataclass(frozen=True)
@@ -68,6 +69,7 @@ class FaceQualityChecker:
         *,
         pose_limits: tuple[float, float, float] | None = None,
         registration: bool = False,
+        frame_id: int | None = None,
     ) -> FaceQualityResult:
         frame_height, frame_width = frame_bgr.shape[:2]
         roi_left, roi_top, roi_right, roi_bottom = face_roi_bounds(
@@ -87,6 +89,8 @@ class FaceQualityChecker:
         crop_right = min(frame_width, int(math.ceil(x2)))
         crop_bottom = min(frame_height, int(math.ceil(y2)))
         face_crop = frame_bgr[crop_top:crop_bottom, crop_left:crop_right]
+        if face_crop.size and frame_id is not None:
+            save_module_input("quality", frame_id, face_crop, variant="face_crop")
 
         if face_crop.size:
             gray = cv2.cvtColor(face_crop, cv2.COLOR_BGR2GRAY)
@@ -274,12 +278,21 @@ class FaceQualityChecker:
         neutral_yaw, neutral_pitch = neutral_pose or (0.0, 0.0)
         direction = 1.0 if pose_key == "down" else -1.0
         directed_pitch = (pitch - neutral_pitch) * direction
-        if directed_pitch < cls.PITCH_MIN_ANGLE:
+        min_pitch = (
+            settings.FACE_POSE_UP_MIN_ANGLE
+            if pose_key == "up"
+            else settings.FACE_POSE_DOWN_MIN_ANGLE
+        )
+        cross_axis_limit = (
+            settings.FACE_POSE_UP_CROSS_AXIS_MAX_ANGLE
+            if pose_key == "up" else cls.CROSS_AXIS_MAX_ANGLE
+        )
+        if directed_pitch < min_pitch:
             return False, "Cúi nhẹ xuống." if pose_key == "down" else "Ngửa nhẹ lên."
         if directed_pitch > cls.PITCH_MAX_ANGLE:
             return False, "Góc hơi nhiều, trở lại nhẹ một chút."
         return (
-            abs(yaw - neutral_yaw) <= cls.CROSS_AXIS_MAX_ANGLE,
+            abs(yaw - neutral_yaw) <= cross_axis_limit,
             "Giữ mặt hướng về trước, chỉ thay đổi nhẹ góc lên/xuống.",
         )
 

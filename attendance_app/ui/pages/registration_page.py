@@ -1,19 +1,15 @@
 ﻿from __future__ import annotations
 
-import time
-
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
     QBoxLayout, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
     QProgressBar, QPushButton, QVBoxLayout, QWidget,
 )
 
 from camera.frame_worker import FrameWorker
-from config import settings
 from registration.registration_flow import RegistrationFrameStatus
 from registration.registration_session import RegistrationSession
 from registration.registration_service import RegistrationService
-from ui.guidance_aggregator import GuidanceAggregator
 from ui.widgets.camera_view import CameraView
 
 
@@ -28,14 +24,7 @@ class RegistrationPage(QWidget):
         self.session = RegistrationSession(registration_service)
         self.worker: FrameWorker | None = None
         self.enrollment_started = False
-        self.guidance_aggregator = GuidanceAggregator()
         self._build_ui()
-        self.guidance_timer = QTimer(self)
-        self.guidance_timer.setInterval(
-            round(settings.RECOGNITION_UI_UPDATE_INTERVAL_SECONDS * 1000)
-        )
-        self.guidance_timer.timeout.connect(self._update_guidance)
-        self.guidance_timer.start()
         self._refresh_step()
 
     def _build_ui(self) -> None:
@@ -142,6 +131,7 @@ class RegistrationPage(QWidget):
         if pose is None:
             return
         self.worker = FrameWorker(registration_mode=True, required_pose=pose)
+        self.worker.preview_worker.frame_ready.connect(self._on_preview)
         self.worker.frame_ready.connect(self._on_frame)
         self.worker.guidance_result.connect(self._on_guidance_result)
         self.worker.camera_error.connect(self._camera_error)
@@ -160,7 +150,6 @@ class RegistrationPage(QWidget):
     def _refresh_step(self, captured_pose: str | None = None) -> None:
         self.progress.setValue(len(self.session.samples))
         self.fas_status.setText("FAS: waiting for one eligible face")
-        self.guidance_aggregator = GuidanceAggregator()
         self.guidance.setText("Đang kiểm tra khuôn mặt…")
         if self.session.complete:
             self.step_label.setText("Đã thu đủ 5 tư thế")
@@ -227,13 +216,12 @@ class RegistrationPage(QWidget):
         self.employee_id.setEnabled(False)
         self.employee_name.setEnabled(False)
         self.start_button.setEnabled(False)
+        self.back_button.setEnabled(False)
         self.guidance.setText("Đang khởi tạo camera và model…")
         self.camera_view.setText("Đang khởi tạo camera và model…")
         self._start_camera_worker()
 
     def _on_frame(self, image, detections, result) -> None:
-        self.camera_view.set_frame(image)
-        self.camera_view.set_detections(detections)
         if not detections:
             self.quality_details.clear()
             self.fas_status.setText("FAS: waiting for one face")
@@ -252,12 +240,23 @@ class RegistrationPage(QWidget):
                 f"Pose: yaw {result.yaw:+.0f}°, pitch {result.pitch:+.0f}°"
             )
 
-    def _on_guidance_result(self, event) -> None:
-        frame_id, timestamp, outcome, track_id, message = event
-        self.guidance_aggregator.add(timestamp, outcome, track_id, message)
+    def _on_preview(self, image) -> None:
+        self.camera_view.set_frame(image)
 
-    def _update_guidance(self) -> None:
-        self.guidance.setText(self.guidance_aggregator.guidance(time.monotonic()))
+    def _on_guidance_result(self, event) -> None:
+        _frame_id, _timestamp, outcome, _track_id, message = event
+        if outcome == "NO_FACE":
+            text = "Đưa một khuôn mặt vào vùng giữa."
+        elif outcome == "MULTIPLE_FACES":
+            text = "Chỉ để một người trong vùng nhận diện."
+        elif outcome == "ALL_PASS":
+            text = "Đạt kiểm tra, đang lưu mẫu…"
+        elif outcome == "ERROR":
+            text = message or "Pipeline gặp lỗi kỹ thuật; vui lòng kiểm tra log."
+        else:
+            text = message
+        if text:
+            self.guidance.setText(text)
 
     def _on_embedding(self, result) -> None:
         if self.session.complete:
@@ -286,8 +285,9 @@ class RegistrationPage(QWidget):
             self.employee_id.setEnabled(True)
             self.employee_name.setEnabled(True)
             self.start_button.setEnabled(True)
+            self.back_button.setEnabled(True)
+            self.reset_button.setEnabled(True)
             self._refresh_step()
-            self.back_requested.emit()
             return
         self._refresh_step(captured_pose)
         if self.worker is not None:
@@ -299,8 +299,8 @@ class RegistrationPage(QWidget):
     def _on_antispoof_result(self, result) -> None:
         verdict = "Real" if result.is_real else "Possible spoof"
         self.fas_status.setText(
-            f"FAS: {verdict} · score {result.logit_difference:+.2f} "
-            f"(threshold {result.logit_threshold:+.2f})"
+            f"FAS: {verdict} · real probability {result.real_probability:.2f} "
+            f"(threshold {result.real_threshold:.2f})"
         )
 
     def _on_antispoof_error(self, message: str) -> None:
@@ -313,6 +313,8 @@ class RegistrationPage(QWidget):
         self.employee_id.setEnabled(True)
         self.employee_name.setEnabled(True)
         self.start_button.setEnabled(True)
+        self.back_button.setEnabled(True)
+        self.reset_button.setEnabled(True)
         self._refresh_step()
         self.camera_view.setText("Nhập ID và tên rồi nhấn Enter để bắt đầu đăng ký.")
 
@@ -320,6 +322,8 @@ class RegistrationPage(QWidget):
         self.guidance.setText(message)
 
     def _back_to_recognition(self) -> None:
+        if self.enrollment_started:
+            return
         self.stop_camera()
         self.session.reset()
         self.enrollment_started = False
