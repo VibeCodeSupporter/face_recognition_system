@@ -1,156 +1,88 @@
-/* ==========================================================================
-   AuthBrandPanel — cột thương hiệu của vùng public.
-   Desktop: panel cao full chiều cao cột trái.
-   Mobile/tablet: thu gọn thành banner (ẩn bớt chi tiết để không chiếm màn hình).
-   ========================================================================== */
 .auth-brand {
   position: relative;
   isolation: isolate;
   display: flex;
+  min-height: 100%;
   flex-direction: column;
-  gap: var(--space-lg);
-  height: 100%;
+  justify-content: space-between;
+  gap: 1.25rem;
   overflow: hidden;
-  padding-block: var(--brand-panel-padding-block);
-  padding-inline: var(--brand-panel-padding-inline);
-  padding-inline-start: max(var(--brand-panel-padding-inline), env(safe-area-inset-left));
+  padding: clamp(1.5rem, 3vw, 3.5rem);
   color: #fff;
-  background-image: var(--gradient-brand);
+  background:
+    radial-gradient(ellipse at 56% 49%, rgba(12, 121, 194, 0.3), transparent 34rem),
+    radial-gradient(ellipse at 5% 100%, rgba(14, 165, 233, 0.16), transparent 28rem),
+    linear-gradient(145deg, #07182d 0%, #082441 52%, #061426 100%);
 }
 
-/* Lưới mờ tạo chiều sâu cho panel */
 .auth-brand::before {
-  content: '';
   position: absolute;
+  z-index: -1;
   inset: 0;
-  z-index: -1;
-  background-image: linear-gradient(var(--gradient-grid-line) 1px, transparent 1px),
-    linear-gradient(90deg, var(--gradient-grid-line) 1px, transparent 1px);
-  background-size: clamp(30px, 3.6vw, 54px) clamp(30px, 3.6vw, 54px);
-  -webkit-mask-image: radial-gradient(125% 100% at 15% 0%, #000 32%, transparent 88%);
-  mask-image: radial-gradient(125% 100% at 15% 0%, #000 32%, transparent 88%);
-}
-
-/* Quầng sáng mềm ở đáy panel */
-.auth-brand::after {
+  background-image: radial-gradient(rgba(210, 240, 255, 0.6) 0.7px, transparent 0.9px);
+  background-size: 29px 29px;
   content: '';
+  opacity: 0.2;
+  mask-image: linear-gradient(135deg, #000, transparent 86%);
+}
+
+.auth-brand::after {
   position: absolute;
-  inset: auto -25% -35% -25%;
-  height: 65%;
   z-index: -1;
-  background: radial-gradient(55% 55% at 50% 50%, rgba(255, 255, 255, 0.2), transparent 72%);
+  top: 24%;
+  left: -15rem;
+  width: 33rem;
+  height: 33rem;
+  border: 1px solid rgba(125, 211, 252, 0.08);
+  border-radius: 50%;
+  box-shadow: 0 0 0 3rem rgba(125, 211, 252, 0.018), 0 0 0 6rem rgba(125, 211, 252, 0.014);
+  content: '';
 }
 
-.auth-brand__top {
-  display: flex;
-  align-items: center;
-}
+.auth-brand__top { display: flex; align-items: center; }
+.auth-brand__body { width: min(100%, 45rem); margin-block: auto; padding-block: 1rem; }
+.auth-brand__eyebrow { display: flex; align-items: center; gap: 0.55rem; margin-bottom: 0.85rem; color: #a6dfff; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.17em; }
+.auth-brand__live-dot { width: 0.48rem; height: 0.48rem; border-radius: 50%; background: #52e3b2; box-shadow: 0 0 0 4px rgba(82, 227, 178, 0.12), 0 0 14px rgba(82, 227, 178, 0.8); }
+.auth-brand .auth-brand__headline { max-width: 40rem; margin: 0; color: #fff; font-size: clamp(2rem, 3vw, 3.1rem); line-height: 1.12; letter-spacing: -0.035em; }
+.auth-brand .auth-brand__description { max-width: 36rem; margin: 0.9rem 0 0; color: rgba(226, 241, 255, 0.72); font-size: 0.94rem; line-height: 1.65; }
+.auth-brand__visual { position: relative; height: clamp(21rem, 49vh, 35rem); margin-top: 1rem; overflow: hidden; border: 1px solid rgba(163, 220, 255, 0.09); border-radius: 1.25rem; background: radial-gradient(ellipse at 50% 50%, rgba(15, 99, 159, 0.16), transparent 68%); }
+.auth-brand__visual::before, .auth-brand__visual::after { position: absolute; z-index: 1; width: 1.25rem; height: 1.25rem; border-color: rgba(130, 214, 255, 0.5); border-style: solid; content: ''; pointer-events: none; }
+.auth-brand__visual::before { top: 0.85rem; left: 0.85rem; border-width: 1px 0 0 1px; border-radius: 0.35rem 0 0; }
+.auth-brand__visual::after { right: 0.85rem; bottom: 0.85rem; border-width: 0 1px 1px 0; border-radius: 0 0 0.35rem; }
+.auth-brand__network { display: block; width: 100%; height: 100%; cursor: crosshair; }
 
-.auth-brand__body {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-md);
-  margin-block: auto;
-}
+.auth-brand__footer { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding-top: 0.9rem; border-top: 1px solid rgba(203, 232, 255, 0.15); }
+.auth-brand__copyright { max-width: 27rem; color: rgba(220, 237, 250, 0.66); font-size: 0.68rem; line-height: 1.5; }
+.auth-brand__university-logo { display: grid; min-width: 9.5rem; height: 3.25rem; place-items: center; overflow: hidden; border-radius: 0.55rem; background: #fff; box-shadow: 0 5px 18px rgba(0, 0, 0, 0.15); }
+.auth-brand__university-logo img { display: block; width: 9.5rem; height: 3.25rem; object-fit: contain; }
 
-.auth-brand .auth-brand__headline {
-  margin: 0;
-  color: #fff;
-  font-size: var(--font-size-2xl);
-  letter-spacing: var(--letter-spacing-heading);
-}
-
-.auth-brand .auth-brand__description {
-  margin: 0;
-  max-width: 34rem;
-  color: rgba(255, 255, 255, 0.82);
-  font-size: var(--font-size-md);
-}
-
-.auth-brand__features {
-  display: grid;
-  gap: var(--space-md);
-  margin: var(--space-sm) 0 0;
-  padding: 0;
-  list-style: none;
-}
-
-.auth-brand__feature {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-sm);
-}
-
-.auth-brand__feature-icon {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 2.25rem;
-  height: 2.25rem;
-  border: 1px solid rgba(255, 255, 255, 0.24);
-  border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.14);
-  font-size: 1rem;
-}
-
-.auth-brand__feature-title {
-  display: block;
-  font-size: var(--font-size-md);
-  font-weight: 600;
-}
-
-.auth-brand__feature-description {
-  display: block;
-  color: rgba(255, 255, 255, 0.74);
-  font-size: var(--font-size-sm);
-}
-
-.auth-brand__footer {
-  margin: 0;
-  padding-top: var(--space-md);
-  border-top: 1px solid rgba(255, 255, 255, 0.18);
-  color: rgba(255, 255, 255, 0.72);
-  font-size: var(--font-size-xs);
-}
-
-/* ── Tablet / mobile: biến panel thành banner gọn phía trên ──────────── */
 @media (max-width: 1023px) {
-  .auth-brand {
-    height: auto;
-    gap: var(--space-sm);
-    padding-block: var(--space-lg);
-  }
-
-  .auth-brand__body {
-    gap: var(--space-xs);
-    margin-block: 0;
-  }
-
-  .auth-brand .auth-brand__headline {
-    font-size: var(--font-size-xl);
-  }
-
-  .auth-brand__features,
-  .auth-brand__footer {
-    display: none;
-  }
+  .auth-brand { min-height: 0; gap: 0.6rem; padding: 1.2rem clamp(1.25rem, 5vw, 3rem); }
+  .auth-brand__body { width: 100%; padding-block: 0.2rem; }
+  .auth-brand__eyebrow { margin-bottom: 0.45rem; }
+  .auth-brand .auth-brand__headline { font-size: clamp(1.55rem, 4vw, 2.25rem); }
+  .auth-brand .auth-brand__description { margin-top: 0.45rem; font-size: 0.82rem; }
+  .auth-brand__visual { height: clamp(10rem, 28vh, 16rem); margin-top: 0.65rem; }
+  .auth-brand__footer { padding-top: 0.6rem; }
+  .auth-brand__copyright { font-size: 0.62rem; }
+  .auth-brand__university-logo { min-width: 7rem; height: 2.4rem; }
+  .auth-brand__university-logo img { width: 7rem; height: 2.4rem; }
 }
 
-/* ── Điện thoại: banner chỉ còn logo + tiêu đề ────────────────────────── */
 @media (max-width: 767px) {
-  .auth-brand .auth-brand__description {
-    display: none;
-  }
+  .auth-brand .auth-brand__description { display: none; }
+  .auth-brand__visual { height: 10rem; }
+  .auth-brand__footer { gap: 0.5rem; }
+  .auth-brand__copyright { max-width: 14rem; }
+  .auth-brand__university-logo { min-width: 6rem; height: 2.1rem; }
+  .auth-brand__university-logo img { width: 6rem; height: 2.1rem; }
 }
 
-/* ── Laptop màn hình thấp: bỏ các khối phụ để form luôn nằm trong viewport ── */
 @media (min-width: 1024px) and (max-height: 820px) {
-  .auth-brand {
-    gap: var(--space-md);
-  }
+  .auth-brand { gap: 0.6rem; padding-block: 1.4rem; }
+  .auth-brand__visual { height: clamp(16rem, 37vh, 24rem); margin-top: 0.65rem; }
+}
 
-  .auth-brand__features,
-  .auth-brand__footer {
-    display: none;
-  }
+@media (prefers-reduced-motion: reduce) {
+  .auth-brand__network { cursor: default; }
 }

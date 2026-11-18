@@ -9,23 +9,40 @@ const SIZE_CLASS_NAMES = {
 }
 
 /**
- * Logo + tên sản phẩm, dùng ở brand panel (nền gradient) và header vùng protected.
+ * Logo + Tên sản phẩm FaceAccess.
+ * Khi collapsed = true, chỉ hiển thị logo icon để tránh tràn chữ trong sidebar thu gọn.
  *
  * @param {object} props
  * @param {'sm' | 'md'} [props.size]
- * @param {'light' | 'dark'} [props.tone] - `light` khi nền tối, `dark` khi nền sáng
+ * @param {'light' | 'dark'} [props.tone]
+ * @param {boolean} [props.collapsed]
  * @param {string} [props.className]
  */
-export default function BrandMark({ size = 'md', tone = 'dark', className }) {
+export default function BrandMark({
+  size = 'md',
+  tone = 'dark',
+  collapsed = false,
+  className,
+}) {
   return (
-    <span className={cx('brand-mark', SIZE_CLASS_NAMES[size], `brand-mark--${tone}`, className)}>
-      <span className="brand-mark__logo" aria-hidden="true">
+    <span
+      className={cx(
+        'brand-mark',
+        SIZE_CLASS_NAMES[size],
+        `brand-mark--${tone}`,
+        collapsed && 'brand-mark--collapsed',
+        className
+      )}
+    >
+      <span className="brand-mark__logo" aria-label={APP_INFO.name}>
         <ScanOutlined />
       </span>
-      <span className="brand-mark__text">
-        <span className="brand-mark__name">{APP_INFO.name}</span>
-        <span className="brand-mark__product">{APP_INFO.portalName}</span>
-      </span>
+      {!collapsed && (
+        <span className="brand-mark__text">
+          <span className="brand-mark__name">{APP_INFO.name}</span>
+          <span className="brand-mark__product">{APP_INFO.portalName}</span>
+        </span>
+      )}
     </span>
   )
 }

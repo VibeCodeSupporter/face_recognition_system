@@ -1,15 +1,17 @@
 import AppThemeProvider from './app/providers/AppThemeProvider.jsx'
+import AuthProvider from './app/providers/AuthProvider.jsx'
 import RootRouter from './app/router/RootRouter.jsx'
 
 /**
- * Composition root cua Web Portal.
- * Chi lap provider (antd theme) va router — moi page/component nam trong src/app/**
- * theo cau truc module: app/components, app/layouts, app/features, app/hooks...
+ * Composition root của Web Portal FaceAccess.
+ * Lắp provider Ant Design theme, AuthProvider và router điều hướng.
  */
 export default function App() {
   return (
     <AppThemeProvider>
-      <RootRouter />
+      <AuthProvider>
+        <RootRouter />
+      </AuthProvider>
     </AppThemeProvider>
   )
 }

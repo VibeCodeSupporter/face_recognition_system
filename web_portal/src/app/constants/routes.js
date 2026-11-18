@@ -1,9 +1,6 @@
 /**
- * Danh sách route của Web Portal.
- *
- * Dự án dùng hash routing (xem app/hooks/useHashRoute.js) vì stack hiện tại
- * chưa có react-router — khi tích hợp router chính thức chỉ cần đổi giá trị
- * ở đây, page/link không phải sửa.
+ * Danh sách route của Web Portal FaceAccess.
+ * Sử dụng Hash Routing (`#/path`).
  */
 export const ROUTES = {
   /** Vùng PUBLIC — chưa đăng nhập */
@@ -11,11 +8,15 @@ export const ROUTES = {
   REGISTER: '/register',
   FORGOT_PASSWORD: '/forgot-password',
 
-  /** Vùng PROTECTED — cần đăng nhập (guard sẽ bật khi có API auth) */
+  /** Vùng PROTECTED — quản trị hệ thống */
   DASHBOARD: '/dashboard',
+  USERS: '/users',
+  DEVICES: '/devices',
+  SESSIONS: '/sessions',
+  LOGS: '/logs',
 }
 
-/** Route mặc định khi hash trống. */
+/** Route mặc định khi chưa đăng nhập */
 export const DEFAULT_ROUTE = ROUTES.LOGIN
 
 export default ROUTES

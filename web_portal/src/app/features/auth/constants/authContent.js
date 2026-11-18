@@ -3,35 +3,35 @@
  * nội dung và chuẩn bị cho đa ngôn ngữ về sau.
  */
 
-/** Nội dung của brand panel (cột trái các màn hình public). */
+/** Nội dung của brand panel trên các màn hình public. */
 export const AUTH_BRAND_CONTENT = {
   features: [
     {
       key: 'users',
       iconKey: 'users',
-      title: 'User & face management',
-      description: 'Enroll, review and re-register face profiles for every user.',
+      title: 'Quản lý nhân sự',
+      description: 'Đăng ký và quản lý hồ sơ khuôn mặt.',
     },
     {
       key: 'history',
       iconKey: 'history',
-      title: 'Access history',
-      description: 'Search and audit every entry decision synced from Edge devices.',
+      title: 'Lịch sử ra vào',
+      description: 'Theo dõi các lượt xác thực tại cửa.',
     },
     {
       key: 'devices',
       iconKey: 'devices',
-      title: 'Device fleet',
-      description: 'Track door devices, connectivity and synchronization status.',
+      title: 'Thiết bị thông minh',
+      description: 'Giám sát trạng thái và kết nối thiết bị.',
     },
     {
       key: 'security',
       iconKey: 'security',
-      title: 'Role-based access',
-      description: 'Separate admin and operator permissions with audit trails.',
+      title: 'Bảo mật nhiều lớp',
+      description: 'Phân quyền và lưu lại hoạt động hệ thống.',
     },
   ],
-  footerNote: 'Doors keep working offline — data syncs automatically once the connection returns.',
+  footerNote: 'Hệ thống kiểm soát ra vào FaceAccess.',
 }
 
 /** Nội dung riêng của màn hình quên mật khẩu. */

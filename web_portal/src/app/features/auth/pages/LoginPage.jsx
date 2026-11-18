@@ -1,28 +1,27 @@
-import AppLink from '../../../components/AppLink.jsx'
-import { ROUTES } from '../../../constants/routes.js'
 import AuthLayout from '../../../layouts/AuthLayout.jsx'
 import AuthBrandPanel from '../components/AuthBrandPanel.jsx'
-import AuthCard from '../components/AuthCard.jsx'
 import LoginForm from '../components/LoginForm.jsx'
 
 /**
- * Page đăng nhập — vùng PUBLIC (`#/login`).
- * Chỉ chịu trách nhiệm ghép khung + form, không chứa logic validate.
+ * Trang đăng nhập Quản trị viên FaceAccess
  */
 export default function LoginPage() {
   return (
     <AuthLayout aside={<AuthBrandPanel />}>
-      <AuthCard
-        title="Sign in"
-        description="Use your portal account to manage users, face enrollment, devices and access history."
-        footer={
-          <>
-            New to the portal? <AppLink to={ROUTES.REGISTER}>Create an account</AppLink>
-          </>
-        }
+      <div
+        style={{
+          width: '100%',
+          maxWidth: 420,
+          margin: '0 auto',
+          padding: '36px 32px',
+          background: '#ffffff',
+          borderRadius: 16,
+          boxShadow: '0 10px 30px -5px rgba(2, 132, 199, 0.12), 0 4px 12px -2px rgba(234, 179, 8, 0.08)',
+          border: '1px solid #e0f2fe',
+        }}
       >
         <LoginForm />
-      </AuthCard>
+      </div>
     </AuthLayout>
   )
 }

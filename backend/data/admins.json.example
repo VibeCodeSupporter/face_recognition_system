@@ -1,0 +1,13 @@
+{
+  "admin": {
+    "password": "admin123",
+    "full_name": "Quản trị viên Hệ thống",
+    "role": "admin"
+  },
+  "security_admin": {
+    "password": "YourStrongPasswordHere_123!@#",
+    "full_name": "Quản trị viên Bảo mật Cấp cao",
+    "role": "admin"
+  }
+}
+

@@ -1,5 +1,14 @@
 import logging
+
+import sys
 from contextlib import asynccontextmanager
+from pathlib import Path
+
+# Đảm bảo thư mục 'backend' luôn nằm trong sys.path để import được package 'app'
+_BACKEND_DIR = Path(__file__).resolve().parent.parent
+if str(_BACKEND_DIR) not in sys.path:
+    sys.path.insert(0, str(_BACKEND_DIR))
+
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
@@ -27,13 +36,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             await run_in_threadpool(database.check)
             application.state.database = database
-            application.state.services = Services(Repositories(database))
+
+            application.state.services = Services(Repositories(database), settings)
+
             yield
         finally:
             database.close()
 
     application = FastAPI(title="FaceAccess Backend API", version="1.0.0", lifespan=lifespan, redirect_slashes=False)
-    application.add_middleware(RequestGuard, api_key=settings.api_key)
+
+    application.state.services = Services(Repositories(None), settings)
+    application.add_middleware(RequestGuard, api_key=settings.api_key, jwt_secret=settings.jwt_secret)
+
     application.include_router(router, responses={
         400: {"model": ErrorResponse, "description": "Invalid JSON, body, path or query parameters.",
               "content": {"application/json": {"example": {"error": {
@@ -54,9 +68,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         503: {"model": ErrorResponse, "description": "Database unavailable."},
     })
 
-    portal_root = BACKEND_ROOT.parent / "web_test_api"
-    if portal_root.is_dir():
-        application.mount("/portal", StaticFiles(directory=portal_root, html=True), name="portal")
+
+    raw_frontend_dir = getattr(settings, "frontend_dir", "web_portal")
+    frontend_path = BACKEND_ROOT.parent / raw_frontend_dir
+
+    # Nếu trỏ vào thư mục web_portal có chứa 'dist' đã build thì ưu tiên dùng 'dist'
+    if (frontend_path / "dist").is_dir() and (frontend_path / "dist" / "index.html").is_file():
+        frontend_path = frontend_path / "dist"
+    elif not frontend_path.is_dir():
+        dist_path = BACKEND_ROOT.parent / "web_portal" / "dist"
+        if dist_path.is_dir() and (dist_path / "index.html").is_file():
+            frontend_path = dist_path
+        else:
+            frontend_path = BACKEND_ROOT.parent / "web_test_api"
+
+    if frontend_path.is_dir():
+        application.mount("/portal", StaticFiles(directory=frontend_path, html=True), name="portal")
+        application.mount("/", StaticFiles(directory=frontend_path, html=True), name="frontend")
+
 
     def error_response(request: Request, status: int, code: str, message: str, details=None):
         request_id = getattr(request.state, "request_id", "")
@@ -74,7 +103,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @application.exception_handler(RequestValidationError)
     async def validation_error(request: Request, error: RequestValidationError):
         invalid_json = any(item["type"] == "json_invalid" for item in error.errors())
-        details = [{"path": ".".join(map(str, item["loc"])), "message": item["msg"]} for item in error.errors()]
+
+        details = []
+        for item in error.errors():
+            loc = ".".join(map(str, item["loc"]))
+            msg = item["msg"]
+            if loc == "body" and (item["type"] in {"missing", "model_type"} or msg == "Field required"):
+                msg = "Request body must be a JSON object."
+            details.append({"path": loc, "message": msg})
+
         return error_response(request, 400, "INVALID_JSON" if invalid_json else "VALIDATION_ERROR", "Request validation failed.", details)
 
     @application.exception_handler(HTTPException)
@@ -88,3 +125,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return error_response(request, 500, "INTERNAL_ERROR", "The request could not be completed.")
 
     return application
+
+
+
+if __name__ == "__main__":
+    import uvicorn
+    app_settings = load_settings()
+    app = create_app(app_settings)
+    uvicorn.run(app, host=app_settings.host, port=app_settings.port)
