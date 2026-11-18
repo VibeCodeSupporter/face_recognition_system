@@ -81,6 +81,7 @@ tbody tr:hover { background: #fafcfb; }
 dialog { border: 1px solid var(--line); border-radius: 8px; padding: 0; width: min(640px, calc(100% - 32px)); max-height: calc(100dvh - 40px); color: var(--ink); box-shadow: 0 16px 65px #1d30242b; }
 dialog::backdrop { background: #14241d66; }
 .compact-dialog { width: min(450px, calc(100% - 32px)); }
+
 .admin-badge { display: inline-flex; align-items: center; gap: 7px; background: #eaf5ef; border: 1px solid #cce5d6; padding: 5px 12px; border-radius: 20px; font-size: 13px; font-weight: 600; color: #14765b; }
 .admin-avatar { width: 22px; height: 22px; background: #14765b; color: white; border-radius: 50%; display: grid; place-items: center; font-size: 11px; }
 .auth-dialog { width: min(440px, calc(100% - 32px)); border: 0; border-radius: 14px; padding: 0; box-shadow: 0 25px 70px rgba(18, 45, 34, 0.28); overflow: hidden; background: white; }
@@ -103,6 +104,7 @@ dialog::backdrop { background: #14241d66; }
 .text-link { background: none; border: none; color: var(--muted); font-size: 12px; cursor: pointer; text-decoration: underline; padding: 4px 8px; }
 .text-link:hover { color: var(--ink); }
 .dev-button { font-size: 12px; padding: 6px 10px; color: var(--muted); border-style: dashed; }
+
 .dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 18px 22px; border-bottom: 1px solid var(--line); }
 .dialog-content { padding: 22px; overflow-wrap: anywhere; }
 .dialog-footer { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 22px; border-top: 1px solid var(--line); }

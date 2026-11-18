@@ -66,4 +66,7 @@ Thiết lập **Database Schema** hoàn chỉnh cho Supabase và xây dựng **B
 * [x] Đã cập nhật documentation nếu cần
 * [ ] Không có lỗi lint / format
 * [ ] Không có file không cần thiết
-* [x] PR này chỉ chứa những thay đổi liên quan
+
+* [ ] Đã cập nhật documentation nếu cần
+* [ ] PR này chỉ chứa những thay đổi liên quan
+

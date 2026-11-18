@@ -5,13 +5,16 @@ from fastapi import APIRouter, Query, Request, Response, Security
 from fastapi.security import APIKeyHeader
 
 from app.dto.access_logs import AccessLogCreate, AccessLogQuery
+
 from app.dto.auth import LoginRequest, ProfileUpdateRequest
+
 from app.dto.devices import DeviceCreate, DevicePatch, DeviceQuery
 from app.dto.face_embeddings import FaceEmbeddingPut
 from app.dto.registration_sessions import SessionCreate, SessionPatch, SessionQuery
 from app.dto.users import UserCreate, UserPatch, UserQuery
 
 router = APIRouter(prefix="/api/v1", dependencies=[Security(APIKeyHeader(name="x-api-key", auto_error=False))])
+
 
 
 #======================================AUTH=========================================
@@ -62,6 +65,7 @@ def update_profile(request: Request, body: ProfileUpdateRequest):
 @router.post("/auth/logout", tags=["Auth"])
 def logout():
     return {"data": {"message": "Đã đăng xuất thành công."}}
+
 
 
 @router.get("/health", tags=["Health"])

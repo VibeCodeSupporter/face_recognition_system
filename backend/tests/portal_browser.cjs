@@ -59,7 +59,7 @@ async function run() {
     await page.goto(`${baseURL}portal/`, { waitUntil: 'networkidle' });
     assert.equal(await page.locator('h1').textContent(), 'Người dùng');
     assert.equal(await page.locator('#create-button').isDisabled(), true);
-    // Test invalid admin credentials
+
     await page.locator('#login-username').fill('admin');
     await page.locator('#login-password').fill('wrong_password_test');
     await responseAfter('POST', '/auth/login', () => page.locator('#login-form button[type="submit"]').click(), 401);
@@ -71,6 +71,7 @@ async function run() {
     await responseAfter('POST', '/auth/login', () => page.locator('#login-form button[type="submit"]').click(), 200);
     await waitLoaded();
     assert.equal(await page.locator('#connection-status').textContent(), 'Đã đăng nhập');
+
     assert.equal(requests.some(request => request.url.includes('key=')), false);
 
     if (!fixture) {

@@ -6,6 +6,7 @@
     "**/*.md",
     "**/*.bat"
   ],
+
   "liveServer.settings.donotShowInfoMsg": true,
   "python.analysis.extraPaths": [
     "${workspaceFolder}/backend"
@@ -13,4 +14,5 @@
   "python.autoComplete.extraPaths": [
     "${workspaceFolder}/backend"
   ]
+
 }

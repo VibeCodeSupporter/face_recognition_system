@@ -27,11 +27,14 @@ const ERROR_MESSAGES = {
   INTERNAL_ERROR: 'Backend gặp lỗi. Hãy kiểm tra bằng mã request bên dưới.',
   INVALID_JSON: 'Nội dung JSON không hợp lệ.',
   VALIDATION_ERROR: 'Dữ liệu nhập chưa hợp lệ. Kiểm tra các trường được đánh dấu.',
+
   INVALID_CREDENTIALS: 'Tên đăng nhập hoặc mật khẩu không chính xác. Vui lòng kiểm tra lại.',
+
 };
 
 const Api = {
   key: '',
+
   token: '',
   admin: null,
   onUnauthorized: () => {},
@@ -41,6 +44,7 @@ const Api = {
   async request(path, { method = 'GET', body, key = this.key, token = this.token, signal } = {}) {
     const isPublic = path === '/auth/login';
     if (!isPublic && !key && !token) throw new ApiError(ERROR_MESSAGES.UNAUTHORIZED, 401, 'UNAUTHORIZED');
+
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 30000);
     const abort = () => controller.abort();
@@ -51,6 +55,7 @@ const Api = {
       if (encoded && new TextEncoder().encode(encoded).length > 128 * 1024) {
         throw new ApiError(ERROR_MESSAGES.BODY_TOO_LARGE, 413, 'BODY_TOO_LARGE');
       }
+
       const headers = {
         ...(encoded === undefined ? {} : { 'Content-Type': 'application/json' }),
       };
@@ -62,6 +67,7 @@ const Api = {
       const response = await fetch(`/api/v1${path}`, {
         method, signal: controller.signal, cache: 'no-store', credentials: 'omit', redirect: 'error',
         headers,
+
         body: encoded,
       });
       const text = response.status === 204 ? '' : await response.text();
@@ -70,8 +76,10 @@ const Api = {
       catch { throw new ApiError('Backend trả dữ liệu không hợp lệ. Kiểm tra địa chỉ và proxy.', response.status, 'INVALID_RESPONSE'); }
       if (!response.ok) {
         const error = payload?.error || {};
+
         if (response.status === 401 && !isPublic) this.onUnauthorized();
         throw new ApiError(ERROR_MESSAGES[error.code] || error.message || `Request thất bại (HTTP ${response.status}).`,
+
           response.status, error.code || 'HTTP_ERROR', error.details || payload?.detail || [], error.request_id || '');
       }
       if (response.status !== 204 && (!payload || !Object.hasOwn(payload, 'data'))) {
@@ -87,6 +95,7 @@ const Api = {
       signal?.removeEventListener('abort', abort);
     }
   },
+
   async login(username, password) {
     const { data } = await this.request('/auth/login', {
       method: 'POST',
@@ -131,6 +140,7 @@ const Api = {
       return false;
     }
   },
+
 };
 
 function queryString(values) {

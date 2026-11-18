@@ -6,10 +6,12 @@ from starlette.responses import JSONResponse
 
 
 class RequestGuard:
+
     def __init__(self, app, api_key: str, jwt_secret: str = ""):
         self.app = app
         self.expected = hashlib.sha256(api_key.encode()).digest()
         self.jwt_secret = jwt_secret or api_key
+
 
     async def __call__(self, scope, receive, send):
         if scope["type"] != "http":
@@ -30,6 +32,7 @@ class RequestGuard:
         async def reject(status, code, message):
             response = JSONResponse({"error": {"code": code, "message": message, "request_id": request_id}}, status_code=status)
             await response(scope, receive, secure_send)
+
 
         path = scope["path"]
         method = scope["method"]
@@ -64,6 +67,7 @@ class RequestGuard:
 
             if not authenticated:
                 await reject(401, "UNAUTHORIZED", "A valid backend x-api-key or Admin Bearer token is required.")
+
                 return
         chunks, length = [], 0
         while True:

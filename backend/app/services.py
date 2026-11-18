@@ -115,6 +115,7 @@ class AccessLogService:
         return existing, False
 
 
+
 class AuthService:
     def __init__(self, settings=None):
         from app.config import BACKEND_ROOT
@@ -238,9 +239,12 @@ class AuthService:
 
 class Services:
     def __init__(self, repositories: Repositories, settings=None):
+
         self.users = CRUDService(repositories.users)
         self.devices = DeviceService(repositories.devices)
         self.embeddings = EmbeddingService(repositories)
         self.sessions = SessionService(repositories)
         self.logs = AccessLogService(repositories.logs)
+
         self.auth = AuthService(settings)
+

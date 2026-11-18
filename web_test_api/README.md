@@ -2,14 +2,14 @@
 
 Website nay dung API Python/FastAPI va Supabase that. Khong co mock, dang nhap email/password, camera gia lap hoac dong bo gia.
 
+
 ## Chạy local
 
 Trong thư mục `backend`:
 
-```powershell
-.\.venv\Scripts\python.exe run.py
-```
 
+```powershell
+.\.venv\Scripts\python.exe run.
 Mở trình duyệt trực tiếp tại `http://127.0.0.1:5000/` (hoặc `http://localhost:5000/`).
 
 Website sẽ hiển thị cửa sổ **Đăng nhập Quản trị viên**:
@@ -19,6 +19,7 @@ Website sẽ hiển thị cửa sổ **Đăng nhập Quản trị viên**:
 
 Sau khi đăng nhập thành công, bạn có toàn quyền quản trị người dùng, thiết bị, phiên đăng ký và lịch sử ra vào mà không cần chạy server riêng hay nhập chuỗi API key phức tạp.
 (Nếu là lập trình viên muốn dùng trực tiếp API key, có thể bấm liên kết "Kết nối qua Backend API Key").
+
 
 ## API duoc su dung
 
