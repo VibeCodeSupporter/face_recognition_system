@@ -26,7 +26,7 @@ import {
   Typography,
 } from 'antd'
 import userService from '../../services/userService.js'
-import { formatDateTimeVN, getErrorMessage } from '../../services/apiClient.js'
+import { getErrorMessage } from '../../services/apiClient.js'
 import FaceEmbeddingModal from './FaceEmbeddingModal.jsx'
 import UserDetailModal from './UserDetailModal.jsx'
 import UserFormModal from './UserFormModal.jsx'
@@ -149,9 +149,9 @@ export default function UsersPage() {
 
   const columns = [
     {
-      title: 'Họ và tên',
+      title: <span style={{ display: 'block', textAlign: 'center' }}>Họ và tên</span>,
       key: 'user',
-      width: 240,
+      width: 150,
       render: (_, record) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, whiteSpace: 'nowrap' }}>
           <Avatar
@@ -180,10 +180,11 @@ export default function UsersPage() {
       ),
     },
     {
-      title: 'Mã nhân viên',
+      title: <span style={{ display: 'block', textAlign: 'center' }}>Mã nhân viên</span>,
       dataIndex: 'user_code',
       key: 'user_code',
-      width: 130,
+      width: 100,
+      align: 'center',
       render: (code) => (
         <Tag
           style={{
@@ -199,10 +200,11 @@ export default function UsersPage() {
       ),
     },
     {
-      title: 'Phòng ban',
+      title: <span style={{ display: 'block', textAlign: 'center' }}>Phòng ban</span>,
       dataIndex: 'department',
       key: 'department',
-      width: 160,
+      width: 135,
+      responsive: ['lg'],
       render: (dep) =>
         dep ? (
           <Tag
@@ -210,7 +212,12 @@ export default function UsersPage() {
               backgroundColor: '#f0f9ff',
               color: '#0284c7',
               border: '1px solid #bae6fd',
-              whiteSpace: 'nowrap',
+              display: 'inline-block',
+              maxWidth: '100%',
+              whiteSpace: dep.trim().split(/\s+/).length > 3 ? 'normal' : 'nowrap',
+              overflowWrap: 'anywhere',
+              lineHeight: '18px',
+              verticalAlign: 'middle',
             }}
           >
             {dep}
@@ -220,10 +227,11 @@ export default function UsersPage() {
         ),
     },
     {
-      title: 'Chức danh',
+      title: <span style={{ display: 'block', textAlign: 'center' }}>Chức danh</span>,
       dataIndex: 'role',
       key: 'role',
-      width: 160,
+      width: 135,
+      responsive: ['lg'],
       render: (role) =>
         role ? (
           <Tag
@@ -232,7 +240,12 @@ export default function UsersPage() {
               color: '#b45309',
               border: '1px solid #fde047',
               fontWeight: 500,
-              whiteSpace: 'nowrap',
+              display: 'inline-block',
+              maxWidth: '100%',
+              whiteSpace: role.trim().split(/\s+/).length > 4 ? 'normal' : 'nowrap',
+              overflowWrap: 'anywhere',
+              lineHeight: '18px',
+              verticalAlign: 'middle',
             }}
           >
             {role}
@@ -241,23 +254,19 @@ export default function UsersPage() {
           <Text type="secondary">—</Text>
         ),
     },
+    // {
+    //   title: 'Thông tin liên hệ',
+    //   key: 'contact',
+    //   width: 205,
+    //   render: (_, record) => (
+    //     <div style={{ minWidth: 0, lineHeight: 1.45 }}>
+    //       <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={record.email}>{record.email || '—'}</div>
+    //       {record.phone && <div style={{ color: '#64748b', fontSize: 12 }}>{record.phone}</div>}
+    //     </div>
+    //   ),
+    // },
     {
-      title: 'Thông tin liên hệ',
-      key: 'contact',
-      width: 260,
-      render: (_, record) => (
-        <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          <span>{record.email || '—'}</span>
-          {record.phone && (
-            <span style={{ color: '#64748b', marginLeft: 8, fontSize: 13 }}>
-              · {record.phone}
-            </span>
-          )}
-        </div>
-      ),
-    },
-    {
-      title: 'Trạng thái',
+      title: <span style={{ display: 'block', textAlign: 'center' }}>Trạng thái</span>,
       dataIndex: 'status',
       key: 'status',
       width: 140,
@@ -271,20 +280,26 @@ export default function UsersPage() {
       ),
     },
     {
-      title: 'Ngày tạo',
+      title: <span style={{ display: 'block', textAlign: 'center' }}>Ngày tạo</span>,
       dataIndex: 'created_at',
       key: 'created_at',
-      width: 170,
-      render: (date) => (
-        <span style={{ whiteSpace: 'nowrap' }}>{formatDateTimeVN(date)}</span>
-      ),
+      width: 115,
+      align: 'center',
+      render: (date) => {
+        if (!date) return <Text type="secondary">—</Text>
+        const parsed = new Date(date)
+        if (Number.isNaN(parsed.getTime())) return <Text type="secondary">—</Text>
+        return <span style={{ display: 'inline-flex', flexDirection: 'column', lineHeight: 1.4, whiteSpace: 'nowrap' }}>
+          <span>{new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', day: '2-digit', month: '2-digit', year: '2-digit' }).format(parsed)}</span>
+          <span style={{ color: '#64748b', fontSize: 12 }}>{new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit' }).format(parsed)}</span>
+        </span>
+      },
     },
     {
-      title: 'Thao tác',
+      title: <span style={{ display: 'block', textAlign: 'center' }}>Thao tác</span>,
       key: 'actions',
-      align: 'right',
-      width: 150,
-      fixed: 'right',
+      align: 'center',
+      width: 165,
       render: (_, record) => (
         <Space size="small" style={{ whiteSpace: 'nowrap' }}>
           <Tooltip title="Xem chi tiết">
@@ -459,6 +474,8 @@ export default function UsersPage() {
           columns={columns}
           dataSource={filteredUsers}
           loading={loading}
+          tableLayout="fixed"
+          className="centered-table-header"
           pagination={{
             defaultPageSize: 20,
             showSizeChanger: true,

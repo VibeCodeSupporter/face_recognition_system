@@ -15,7 +15,7 @@ import DashboardPage from '../features/dashboard/pages/DashboardPage.jsx'
 import UsersPage from '../features/users/UsersPage.jsx'
 import DevicesPage from '../features/devices/DevicesPage.jsx'
 import SessionsPage from '../features/sessions/SessionsPage.jsx'
-import LogsPage from '../features/logs/LogsPage.jsx'
+import LogsPage from '../features/accessLogs/LogsPage.jsx'
 
 /**
  * Route công khai (render trong AuthLayout)

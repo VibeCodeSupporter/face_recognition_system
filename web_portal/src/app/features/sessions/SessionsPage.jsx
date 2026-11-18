@@ -27,7 +27,7 @@ import {
 import deviceService from '../../services/deviceService.js'
 import sessionService from '../../services/sessionService.js'
 import userService from '../../services/userService.js'
-import { formatDateTimeVN, getErrorMessage } from '../../services/apiClient.js'
+import { getErrorMessage } from '../../services/apiClient.js'
 import FaceEmbeddingModal from '../users/FaceEmbeddingModal.jsx'
 import SessionCreateModal from './SessionCreateModal.jsx'
 import SessionDetailModal from './SessionDetailModal.jsx'
@@ -49,6 +49,15 @@ const normalizeText = (str) =>
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .trim()
+
+function renderCompactDateTime(value) {
+  if (!value) return <Text type="secondary">—</Text>
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return <Text type="secondary">—</Text>
+  const dateText = new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', day: '2-digit', month: '2-digit', year: '2-digit' }).format(date)
+  const timeText = new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit' }).format(date)
+  return <span style={{ display: 'inline-flex', flexDirection: 'column', lineHeight: 1.35, whiteSpace: 'nowrap' }}><span>{dateText}</span><Text type="secondary" style={{ fontSize: 12 }}>{timeText}</Text></span>
+}
 
 export default function SessionsPage() {
   const { message } = AntdApp.useApp()
@@ -179,9 +188,9 @@ export default function SessionsPage() {
 
   const columns = [
     {
-      title: 'Người dùng',
+      title: <span style={{ display: 'block', textAlign: 'center' }}>Người dùng</span>,
       key: 'user',
-      width: 250,
+      width: 205,
       render: (_, record) => {
         const u = users.find((item) => item.id === record.user_id)
         return u ? (
@@ -208,28 +217,23 @@ export default function SessionsPage() {
       },
     },
     {
-      title: 'Thiết bị đăng ký',
+      title: <span style={{ display: 'block', textAlign: 'center' }}>Thiết bị đăng ký</span>,
       key: 'device',
-      width: 220,
+      width: 165,
       render: (_, record) => {
         const d = devices.find((item) => item.id === record.device_id)
         return d ? (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, whiteSpace: 'nowrap' }}>
-            <Tag style={{ margin: 0, fontWeight: 500, whiteSpace: 'nowrap' }}>{d.device_code}</Tag>
-            <span style={{ fontWeight: 500, color: '#334155', whiteSpace: 'nowrap' }}>
-              {d.name}
-            </span>
-          </div>
+          <span title={d.name} style={{ display: 'block', fontWeight: 500, color: '#334155', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.name}</span>
         ) : (
           <code style={{ fontSize: 12 }}>{record.device_id.slice(0, 8)}…</code>
         )
       },
     },
     {
-      title: 'Trạng thái',
+      title: <span style={{ display: 'block', textAlign: 'center' }}>Trạng thái</span>,
       dataIndex: 'status',
       key: 'status',
-      width: 140,
+      width: 125,
       render: (status) => {
         const conf = STATUS_TAGS[status] || { label: status, color: 'default' }
         return (
@@ -240,32 +244,34 @@ export default function SessionsPage() {
       },
     },
     {
-      title: 'Ngày tạo',
+      title: <span style={{ display: 'block', textAlign: 'center' }}>Ngày tạo</span>,
       dataIndex: 'created_at',
       key: 'created_at',
-      width: 165,
-      render: (date) => <span style={{ whiteSpace: 'nowrap' }}>{formatDateTimeVN(date)}</span>,
+      width: 115,
+      align: 'center',
+      render: renderCompactDateTime,
     },
     {
-      title: 'Hết hạn',
+      title: <span style={{ display: 'block', textAlign: 'center' }}>Hết hạn</span>,
       dataIndex: 'expires_at',
       key: 'expires_at',
-      width: 165,
-      render: (date) => <span style={{ whiteSpace: 'nowrap' }}>{formatDateTimeVN(date)}</span>,
+      width: 115,
+      align: 'center',
+      render: renderCompactDateTime,
     },
     {
-      title: 'Hoàn tất lúc',
+      title: <span style={{ display: 'block', textAlign: 'center' }}>Hoàn tất lúc</span>,
       dataIndex: 'completed_at',
       key: 'completed_at',
-      width: 165,
-      render: (date) => <span style={{ whiteSpace: 'nowrap' }}>{formatDateTimeVN(date)}</span>,
+      width: 115,
+      align: 'center',
+      render: renderCompactDateTime,
     },
     {
-      title: 'Thao tác',
+      title: <span style={{ display: 'block', textAlign: 'center' }}>Thao tác</span>,
       key: 'actions',
-      align: 'right',
-      width: 160,
-      fixed: 'right',
+      align: 'center',
+      width: 245,
       render: (_, record) => {
         const isPending = record.status === 'pending'
         const isNotExpired =
@@ -505,7 +511,8 @@ export default function SessionsPage() {
           columns={columns}
           dataSource={sessions}
           loading={loading}
-          scroll={{ x: 1280 }}
+          tableLayout="fixed"
+          className="centered-table-header"
           pagination={{
             current: page,
             pageSize,

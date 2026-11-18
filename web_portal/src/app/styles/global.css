@@ -99,6 +99,11 @@ a:hover {
   max-width: 100%;
 }
 
+/* Compact management tables: center headings while keeping row content readable. */
+.centered-table-header .ant-table-thead > tr > th {
+  text-align: center;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -22,7 +22,7 @@ import {
   Typography,
 } from 'antd'
 import deviceService from '../../services/deviceService.js'
-import { formatDateTimeVN, getErrorMessage } from '../../services/apiClient.js'
+import { getErrorMessage } from '../../services/apiClient.js'
 import DeviceDetailModal from './DeviceDetailModal.jsx'
 import DeviceFormModal from './DeviceFormModal.jsx'
 import DeviceTokenModal from './DeviceTokenModal.jsx'
@@ -33,6 +33,15 @@ const STATUS_TAGS = {
   online: { label: 'Online', color: 'success' },
   offline: { label: 'Offline', color: 'default' },
   warning: { label: 'Cảnh báo', color: 'warning' },
+}
+
+function renderCompactDateTime(value) {
+  if (!value) return <Text type="secondary">—</Text>
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return <Text type="secondary">—</Text>
+  const dateText = new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', day: '2-digit', month: '2-digit', year: '2-digit' }).format(date)
+  const timeText = new Intl.DateTimeFormat('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh', hour: '2-digit', minute: '2-digit' }).format(date)
+  return <span style={{ display: 'inline-flex', flexDirection: 'column', lineHeight: 1.35, whiteSpace: 'nowrap' }}><span>{dateText}</span><Text type="secondary" style={{ fontSize: 12 }}>{timeText}</Text></span>
 }
 
 export default function DevicesPage() {
@@ -99,9 +108,9 @@ export default function DevicesPage() {
 
   const columns = [
     {
-      title: 'Thiết bị',
+      title: <span style={{ display: 'block', textAlign: 'center' }}>Thiết bị</span>,
       key: 'device',
-      width: 250,
+      width: 190,
       render: (_, record) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, whiteSpace: 'nowrap' }}>
           <div
@@ -120,15 +129,16 @@ export default function DevicesPage() {
           >
             <DeploymentUnitOutlined />
           </div>
-          <span style={{ fontWeight: 600, color: '#0f172a' }}>{record.name}</span>
+          <span title={record.name} style={{ fontWeight: 600, color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis' }}>{record.name}</span>
         </div>
       ),
     },
     {
-      title: 'Mã thiết bị',
+      title: <span style={{ display: 'block', textAlign: 'center' }}>Mã thiết bị</span>,
       dataIndex: 'device_code',
       key: 'device_code',
-      width: 140,
+      width: 125,
+      align: 'center',
       render: (code) => (
         <Tag
           style={{
@@ -144,17 +154,17 @@ export default function DevicesPage() {
       ),
     },
     {
-      title: 'Vị trí lắp đặt',
+      title: <span style={{ display: 'block', textAlign: 'center' }}>Vị trí lắp đặt</span>,
       dataIndex: 'location',
       key: 'location',
-      width: 180,
-      render: (loc) => <span style={{ whiteSpace: 'nowrap' }}>{loc || '—'}</span>,
+      width: 145,
+      render: (loc) => <span title={loc || ''} style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{loc || '—'}</span>,
     },
     {
-      title: 'Trạng thái',
+      title: <span style={{ display: 'block', textAlign: 'center' }}>Trạng thái</span>,
       dataIndex: 'status',
       key: 'status',
-      width: 130,
+      width: 120,
       render: (status) => {
         const conf = STATUS_TAGS[status] || { label: status, color: 'default' }
         return (
@@ -165,34 +175,29 @@ export default function DevicesPage() {
       },
     },
     {
-      title: 'Cấu hình nhận diện',
+      title: <span style={{ display: 'block', textAlign: 'center' }}>Cấu hình nhận diện</span>,
       key: 'settings',
-      width: 240,
+      width: 170,
       render: (_, record) => (
-        <div style={{ whiteSpace: 'nowrap' }}>
-          <span>
-            Ngưỡng: <strong>{record.settings?.threshold ?? '—'}%</strong> · Khóa:{' '}
-            <strong>{record.settings?.doorDuration ?? '—'}s</strong>
-          </span>
-          <span style={{ color: '#64748b', marginLeft: 8, fontSize: 12 }}>
-            (Liveness: {record.settings?.liveness ? 'Bật' : 'Tắt'})
-          </span>
+        <div style={{ lineHeight: 1.4 }}>
+          <div>Ngưỡng: <strong>{record.settings?.threshold ?? '—'}%</strong></div>
+          <div style={{ color: '#64748b', fontSize: 12 }}>Khóa: {record.settings?.doorDuration ?? '—'}s · Liveness: {record.settings?.liveness ? 'Bật' : 'Tắt'}</div>
         </div>
       ),
     },
     {
-      title: 'Lần hoạt động cuối',
+      title: <span style={{ display: 'block', textAlign: 'center' }}>Lần hoạt động cuối</span>,
       dataIndex: 'last_seen_at',
       key: 'last_seen_at',
-      width: 175,
-      render: (date) => <span style={{ whiteSpace: 'nowrap' }}>{formatDateTimeVN(date)}</span>,
+      width: 115,
+      align: 'center',
+      render: renderCompactDateTime,
     },
     {
-      title: 'Thao tác',
+      title: <span style={{ display: 'block', textAlign: 'center' }}>Thao tác</span>,
       key: 'actions',
-      align: 'right',
-      width: 140,
-      fixed: 'right',
+      align: 'center',
+      width: 145,
       render: (_, record) => (
         <Space size="small" style={{ whiteSpace: 'nowrap' }}>
           <Tooltip title="Xem chi tiết">
@@ -316,7 +321,8 @@ export default function DevicesPage() {
           columns={columns}
           dataSource={devices}
           loading={loading}
-          scroll={{ x: 1150 }}
+          tableLayout="fixed"
+          className="centered-table-header"
           pagination={{
             current: page,
             pageSize,
