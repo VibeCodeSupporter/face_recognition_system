@@ -3,7 +3,6 @@
 from datetime import datetime
 from pathlib import Path
 import time
-
 import numpy as np
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QImage, QPixmap
@@ -269,11 +268,11 @@ class RecognitionPage(QWidget):
         self._result_event_until = 0.0
         self._no_face_since = None
         self._recognition_in_flight = False
-        self.camera_view.set_spoof_state(False)
         self.embedding_status.setText("Embedding: loading ONNX model")
         self.fas_status.setText("FAS: loading ONNX model")
         self.camera_status.setText("● Loading ONNX detector")
         self.worker = FrameWorker()
+        self.worker.preview_worker.frame_ready.connect(self._on_preview)
         self.worker.frame_ready.connect(self._on_frame)
         self.worker.guidance_result.connect(self._on_guidance_result)
         self.worker.camera_error.connect(self._camera_error)
@@ -412,10 +411,9 @@ class RecognitionPage(QWidget):
         self.fas_error_message = None
         verdict = "Real" if result.is_real else "Possible spoof"
         self.fas_status.setText(
-            f"FAS: {verdict} · score {result.logit_difference:+.2f} "
-            f"(threshold {result.logit_threshold:+.2f})"
+            f"FAS: {verdict} · real probability {result.real_probability:.2f} "
+            f"(threshold {result.real_threshold:.2f})"
         )
-        self.camera_view.set_spoof_state(not result.is_real, result.track_id)
         if not result.is_real:
             self._set_result_state(
                 "Spoof phát hiện · nhận diện đang tạm dừng", "#ff6b6b"
@@ -426,12 +424,9 @@ class RecognitionPage(QWidget):
 
     def _on_antispoof_error(self, message: str) -> None:
         self.fas_error_message = message
-        self.camera_view.set_spoof_state(False)
         self.fas_status.setText(f"FAS unavailable · {message}")
 
     def _on_frame(self, image, detections, quality_result) -> None:
-        self.camera_view.set_frame(image)
-        self.camera_view.set_detections(detections)
         self.capture_button.setEnabled(True)
         previous_track_id = self.current_track_id
         self.current_face_count = len(detections)
@@ -441,15 +436,12 @@ class RecognitionPage(QWidget):
             and previous_track_id is not None
             and self.current_track_id != previous_track_id
         ):
-            self.camera_view.set_spoof_state(False)
             self.fas_error_message = None
             self.fas_status.setText("FAS: collecting same-track samples")
         if self.current_face_count == 0:
-            self.camera_view.set_spoof_state(False)
             if time.monotonic() >= self._result_event_until:
                 self._set_result_state("Chờ khuôn mặt trong vùng")
         elif self.current_face_count > 1:
-            self.camera_view.set_spoof_state(False)
             if time.monotonic() >= self._result_event_until:
                 self._set_result_state("Có nhiều mặt · nhận diện tạm dừng", "#f6c177")
         if self.detector_error_message:
@@ -473,6 +465,9 @@ class RecognitionPage(QWidget):
                 self.fas_status.setText("FAS: paused · multiple faces in zone")
             self.quality_details.setText(details)
             self.camera_status.setText(f"● Camera live · {message}")
+
+    def _on_preview(self, image) -> None:
+        self.camera_view.set_frame(image)
 
     def _on_guidance_result(self, event) -> None:
         frame_id, timestamp, outcome, track_id, message = event

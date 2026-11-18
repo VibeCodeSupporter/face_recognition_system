@@ -1,12 +1,14 @@
 """Factory for interchangeable ONNX anti-spoofing models."""
 
-from face.antispoof import FaceAntiSpoofDetector, MiniFASOnnxDetector
+from pathlib import Path
+
+from face.antispoof import FaceAntiSpoofDetector, SilentFaceOnnxDetector
 
 
 def create_antispoof_detector(
-    name: str, model_path: str, logit_threshold: float = 0.0
+    name: str, model_paths: list[str | Path], real_threshold: float = 0.5
 ) -> FaceAntiSpoofDetector:
     normalized_name = name.strip().lower()
-    if normalized_name == "mini_fas_onnx":
-        return MiniFASOnnxDetector(model_path, logit_threshold)
+    if normalized_name == "silentface_onnx":
+        return SilentFaceOnnxDetector(model_paths, real_threshold)
     raise ValueError(f"Unsupported face anti-spoof model: {name}")

@@ -12,14 +12,14 @@ from config.settings import (
     FACE_DETECTOR_NAME,
 )
 from face.detector import FaceDetector
-from face.detectors.yolov8_face_onnx import YOLOv8FaceONNXDetector
+from face.detectors.yunet import YuNetFaceDetector
 
 
 DetectorBuilder = Callable[[Path], FaceDetector]
 
 
-def _build_yolov8_face_onnx(model_path: Path) -> FaceDetector:
-    return YOLOv8FaceONNXDetector(
+def _build_yunet(model_path: Path) -> FaceDetector:
+    return YuNetFaceDetector(
         model_path,
         confidence_threshold=FACE_DETECTOR_CONFIDENCE,
         iou_threshold=FACE_DETECTOR_IOU,
@@ -28,7 +28,7 @@ def _build_yolov8_face_onnx(model_path: Path) -> FaceDetector:
 
 # Add a backend here; the camera worker and UI keep using FaceDetector.detect().
 DETECTOR_BUILDERS: dict[str, DetectorBuilder] = {
-    "yolov8_face_onnx": _build_yolov8_face_onnx,
+    "yunet": _build_yunet,
 }
 
 

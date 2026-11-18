@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor
+import time
 
 import numpy as np
 
@@ -35,6 +37,11 @@ class RegistrationFlow:
         self.neutral_pose: tuple[float, float] | None = None
         self.sample_captured = False
         self.accepted_status: RegistrationFrameStatus | None = None
+        # Prepare the two model inputs concurrently. Model inference remains
+        # ordered: embedding inference is gated on a real FAS verdict.
+        self._input_executor = ThreadPoolExecutor(
+            max_workers=2, thread_name_prefix="registration-input"
+        )
 
     def set_required_pose(self, pose: str) -> None:
         if pose != self.required_pose:
@@ -63,10 +70,15 @@ class RegistrationFlow:
         self.accepted_status = None
 
     def process(
-        self, frame: np.ndarray, detection: FaceDetection
+        self, frame: np.ndarray, detection: FaceDetection, *, frame_number: int | None = None
     ) -> tuple[RegistrationFrameStatus, AntiSpoofResult | None, FaceEmbedding | None]:
         if detection.track_id is not None and detection.track_id != self.track_id:
-            self.reset()
+            # A short detector/tracker interruption can assign a new ID to the
+            # same person. Keep the frontal calibration for the current pose.
+            # Once this pose has produced an embedding, keep its one-shot gate
+            # until the UI advances the required pose.
+            if not self.sample_captured:
+                self.reset(clear_neutral_pose=False)
             self.track_id = detection.track_id
         if self.sample_captured and self.accepted_status is not None:
             return self.accepted_status, None, None
@@ -86,21 +98,51 @@ class RegistrationFlow:
             ), None, None
 
         quality = self.quality_checker.evaluate(
-            frame, detection, registration=True
+            frame, detection, registration=True, frame_id=frame_number
         )
         if not quality.passed:
             return RegistrationFrameStatus(
                 "quality", True, guidance, yaw, pitch, roll, quality=quality,
             ), None, None
 
-        fas_result = self.pipeline.anti_spoof.predict(frame, detection)
+        fas_future = self._input_executor.submit(
+            self.pipeline.anti_spoof.prepare_inputs,
+            frame, detection, frame_id=frame_number,
+        )
+        aligned_future = self._input_executor.submit(
+            self.pipeline.align_detection,
+            frame, detection, frame_id=frame_number,
+        )
+        fas_inputs = fas_future.result()
+        try:
+            aligned_rgb = aligned_future.result()
+            alignment_error = None
+        except Exception as error:
+            # Liveness still gets evaluated; alignment is needed only if the
+            # face passes FAS and can proceed to embedding inference.
+            aligned_rgb = None
+            alignment_error = error
+
+        fas_result = self.pipeline.anti_spoof.predict_prepared(
+            fas_inputs, detection
+        )
         if not fas_result.is_real:
             return RegistrationFrameStatus(
                 "fas", True, guidance, yaw, pitch, roll,
                 fas_real=False,
             ), fas_result, None
 
-        embedding = self.pipeline.embed_detection(frame, detection)
+        if alignment_error is not None:
+            raise alignment_error
+        assert aligned_rgb is not None
+        vector = self.pipeline.embed_aligned(aligned_rgb)
+        embedding = FaceEmbedding(
+            vector=vector,
+            aligned_rgb=aligned_rgb,
+            track_id=detection.track_id,
+            model_name=self.pipeline.model_name,
+            created_at=time.monotonic(),
+        )
         status = RegistrationFrameStatus(
             "accepted", True, guidance, yaw, pitch, roll,
             quality=quality, fas_real=True,
@@ -108,3 +150,6 @@ class RegistrationFlow:
         self.sample_captured = True
         self.accepted_status = status
         return status, fas_result, embedding
+
+    def close(self) -> None:
+        self._input_executor.shutdown(wait=False, cancel_futures=True)

@@ -5,8 +5,6 @@ from PyQt6.QtGui import QColor, QImage, QPainter, QPen, QPixmap
 from PyQt6.QtWidgets import QLabel
 
 from common.face_region import FACE_ROI, face_roi_bounds
-from face.detector import FaceDetection
-
 
 class CameraView(QLabel):
     ROI = QRectF(*FACE_ROI)
@@ -14,9 +12,6 @@ class CameraView(QLabel):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self._image = None
-        self._detections: list[FaceDetection] = []
-        self._spoof_detected = False
-        self._spoof_track_id: int | None = None
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setMinimumSize(320, 180)
         self.setText("Đang khởi động camera…")
@@ -26,20 +21,11 @@ class CameraView(QLabel):
         self._image = image.copy()
         self._render()
 
-    def set_detections(self, detections: list[FaceDetection]) -> None:
-        self._detections = detections
-        self.update()
-
-    def set_spoof_state(self, spoof_detected: bool, track_id: int | None = None) -> None:
-        self._spoof_detected = spoof_detected
-        self._spoof_track_id = track_id if spoof_detected else None
-        self.update()
-
     def captured_image(self):
         return self._image.copy() if self._image is not None else None
 
     def captured_roi_image(self):
-        """Return the current source frame cropped to the same detector ROI."""
+        """Return the current source frame cropped to the detector ROI."""
         if self._image is None:
             return None
         left, top, right, bottom = face_roi_bounds(
@@ -62,9 +48,6 @@ class CameraView(QLabel):
             image_rect.width() * self.ROI.width(),
             image_rect.height() * self.ROI.height(),
         )
-        scale_x = image_rect.width() / self._image.width()
-        scale_y = image_rect.height() / self._image.height()
-
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         painter.setPen(QPen(QColor("#73e6ac"), 3))
@@ -75,45 +58,14 @@ class CameraView(QLabel):
             Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft,
             "VÙNG ĐƯA MẶT VÀO",
         )
-
-        for detection in self._detections:
-            x1, y1, x2, y2 = detection.bbox
-            box = QRectF(
-                image_rect.x() + x1 * scale_x,
-                image_rect.y() + y1 * scale_y,
-                (x2 - x1) * scale_x,
-                (y2 - y1) * scale_y,
-            )
-            spoofed = self._spoof_detected and (
-                self._spoof_track_id is None
-                or detection.track_id is None
-                or detection.track_id == self._spoof_track_id
-            )
-            box_color = QColor("#ff4d4f") if spoofed else QColor("#58a6ff")
-            painter.setPen(QPen(box_color, 3 if spoofed else 2))
-            painter.drawRect(box)
-            track_label = (
-                f"Face #{detection.track_id}"
-                if detection.track_id is not None and detection.track_id >= 0
-                else "Face"
-            )
-            painter.drawText(
-                box.adjusted(4, 3, -3, -3),
-                Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft,
-                f"{'SPOOF · ' if spoofed else ''}{track_label} · {detection.confidence:.2f}",
-            )
-            painter.setPen(QPen(QColor("#ff6b6b"), 5))
-            for point_x, point_y, visibility in detection.landmarks:
-                if visibility >= 0.2:
-                    painter.drawPoint(
-                        round(image_rect.x() + point_x * scale_x),
-                        round(image_rect.y() + point_y * scale_y),
-                    )
         painter.end()
 
     def _image_display_rect(self) -> QRectF:
         area = QRectF(self.contentsRect())
-        scale = min(area.width() / self._image.width(), area.height() / self._image.height())
+        scale = min(
+            area.width() / self._image.width(),
+            area.height() / self._image.height(),
+        )
         width = self._image.width() * scale
         height = self._image.height() * scale
         return QRectF(

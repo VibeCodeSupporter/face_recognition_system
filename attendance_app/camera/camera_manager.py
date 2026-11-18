@@ -61,6 +61,13 @@ class CameraManager:
                 self._latest_timestamp,
             )
 
+    def latest(self):
+        """Return the current captured frame without advancing the inference cursor."""
+        with self._condition:
+            if self._latest_frame is None:
+                return None, None, None
+            return self._latest_frame.copy(), self._frame_sequence, self._latest_timestamp
+
     def close(self) -> None:
         if self._capture is not None:
             self._stop_capture.set()

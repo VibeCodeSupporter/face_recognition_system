@@ -1,4 +1,4 @@
-"""Model-independent face anti-spoofing interface and MiniFAS ONNX adapter."""
+"""Silent-Face ONNX anti-spoofing adapter and upstream-compatible crops."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from typing import Protocol, runtime_checkable
 import cv2
 import numpy as np
 from face.detector import FaceDetection
+from face.debug_images import save_module_input
 from face.onnx_runtime import create_inference_session
 
 
@@ -18,163 +19,155 @@ class AntiSpoofResult:
     is_real: bool
     real_probability: float
     spoof_probability: float
-    logit_difference: float
-    logit_threshold: float
+    real_threshold: float
     track_id: int | None
     created_at: float
 
 
 @runtime_checkable
 class FaceAntiSpoofDetector(Protocol):
+    def prepare_inputs(
+        self, frame_bgr: np.ndarray, detection: FaceDetection,
+        *, frame_id: int | None = None,
+    ) -> list[tuple[tuple, np.ndarray]]: ...
+
+    def predict_prepared(
+        self, prepared_inputs: list[tuple[tuple, np.ndarray]],
+        detection: FaceDetection,
+    ) -> AntiSpoofResult: ...
+
     def predict(
-        self, frame_bgr: np.ndarray, detection: FaceDetection
+        self, frame_bgr: np.ndarray, detection: FaceDetection,
+        *, frame_id: int | None = None,
     ) -> AntiSpoofResult: ...
 
 
-class MiniFASOnnxDetector:
-    """MiniFAS two-class ONNX model using the benchmark preprocessing."""
+class SilentFaceOnnxDetector:
+    """Fuse Silent-Face 2.7/4.0 ONNX models using repository preprocessing."""
 
-    INPUT_SIZE = 128
-    BBOX_EXPANSION = 1.5
-    LOGIT_THRESHOLD = 0.0
+    INPUT_SIZE = 80
 
-    def __init__(
-        self, model_path: str | Path, logit_threshold: float = LOGIT_THRESHOLD
-    ) -> None:
-        self.model_path = Path(model_path).expanduser().resolve()
-        self.logit_threshold = float(logit_threshold)
-        if not self.model_path.is_file():
-            raise FileNotFoundError(
-                f"Face anti-spoof ONNX file not found: {self.model_path}"
-            )
-        self.session = create_inference_session(self.model_path)
-        inputs = self.session.get_inputs()
-        outputs = self.session.get_outputs()
-        if len(inputs) != 1 or len(outputs) != 1:
-            raise ValueError("MiniFAS ONNX must have one input and one output")
-        self.input = inputs[0]
-        self.output = outputs[0]
-        shape = self.input.shape
-        if len(shape) != 4 or shape[1:] != [3, 128, 128]:
-            raise ValueError(
-                f"Expected MiniFAS NCHW input [batch,3,128,128], got {shape}"
-            )
-        self.debug_dir = Path(__file__).resolve().parents[1] / "data" / "fas_inputs"
-        self._debug_save_calls = 0
+    def __init__(self, model_paths: list[str | Path], real_threshold: float = 0.5) -> None:
+        if not model_paths:
+            raise ValueError("At least one Silent-Face ONNX model is required")
+        self.real_threshold = float(real_threshold)
+        self.models = []
+        for model_path in model_paths:
+            path = Path(model_path).expanduser().resolve()
+            if not path.is_file():
+                raise FileNotFoundError(f"Silent-Face ONNX not found: {path}")
+            scale = _scale_from_filename(path.name)
+            session = create_inference_session(path)
+            inputs, outputs = session.get_inputs(), session.get_outputs()
+            if len(inputs) != 1 or len(outputs) != 1:
+                raise ValueError(f"Silent-Face ONNX must have one input/output: {path}")
+            shape = inputs[0].shape
+            if len(shape) != 4 or shape[1:] != [3, 80, 80]:
+                raise ValueError(f"Expected Silent-Face NCHW [batch,3,80,80], got {shape}: {path}")
+            self.models.append((path, scale, session, inputs[0].name, outputs[0].name))
 
     def predict(
-        self, frame_bgr: np.ndarray, detection: FaceDetection
+        self, frame_bgr: np.ndarray, detection: FaceDetection,
+        *, frame_id: int | None = None,
     ) -> AntiSpoofResult:
-        expanded_crop = crop_face_for_fas(
-            frame_bgr, detection.bbox, self.BBOX_EXPANSION
+        prepared_inputs = self.prepare_inputs(
+            frame_bgr, detection, frame_id=frame_id
         )
-        expanded_crop_rgb = cv2.cvtColor(expanded_crop, cv2.COLOR_BGR2RGB)
-        model_image_rgb, tensor = preprocess_fas(expanded_crop_rgb, self.INPUT_SIZE)
-        self._debug_save_calls += 1
-        if self._debug_save_calls == 1 or self._debug_save_calls % 30 == 0:
-            self.debug_dir.mkdir(parents=True, exist_ok=True)
-            model_image_bgr = cv2.cvtColor(model_image_rgb, cv2.COLOR_RGB2BGR)
-            self._save_debug_images(expanded_crop, model_image_bgr)
-        logits = np.asarray(
-            self.session.run(
-                [self.output.name], {self.input.name: tensor}
-            )[0],
-            dtype=np.float32,
-        ).reshape(-1)
-        if logits.size != 2 or not np.isfinite(logits).all():
-            raise ValueError(f"MiniFAS should return two finite logits, got {logits}")
+        return self.predict_prepared(prepared_inputs, detection)
 
-        shifted = logits - float(np.max(logits))
-        probabilities = np.exp(shifted)
-        probabilities /= probabilities.sum()
-        real_probability = float(probabilities[0])
-        spoof_probability = float(probabilities[1])
-        logit_difference = float(logits[0] - logits[1])
+    def prepare_inputs(
+        self, frame_bgr: np.ndarray, detection: FaceDetection,
+        *, frame_id: int | None = None,
+    ) -> list[tuple[tuple, np.ndarray]]:
+        """Crop/resize both Silent-Face inputs without running either model."""
+        frame = np.asarray(frame_bgr)
+        bbox = _bbox_xywh(detection.bbox)
+        prepared_inputs = []
+        for path, scale, session, input_name, output_name in self.models:
+            crop = crop_silentface(frame, bbox, scale, self.INPUT_SIZE, self.INPUT_SIZE)
+            if frame_id is not None:
+                variant = f"{_scale_label(scale)}_input_80"
+                save_module_input("silentface", frame_id, crop, variant=variant)
+            # Silent-Face ToTensor keeps OpenCV BGR order and float pixel values in [0,255].
+            tensor = np.ascontiguousarray(crop.transpose(2, 0, 1)[None], dtype=np.float32)
+            prepared_inputs.append(((path, scale, session, input_name, output_name), tensor))
+        return prepared_inputs
+
+    def predict_prepared(
+        self, prepared_inputs: list[tuple[tuple, np.ndarray]],
+        detection: FaceDetection,
+    ) -> AntiSpoofResult:
+        """Run the FAS models on already prepared 80x80 inputs."""
+        summed_probabilities = np.zeros(3, dtype=np.float64)
+        for model, tensor in prepared_inputs:
+            path, _scale, session, input_name, output_name = model
+            logits = np.asarray(session.run([output_name], {input_name: tensor})[0], dtype=np.float32).reshape(-1)
+            if logits.size != 3 or not np.isfinite(logits).all():
+                raise ValueError(f"Silent-Face should return 3 finite logits, got {logits}: {path}")
+            shifted = logits - float(logits.max())
+            probabilities = np.exp(shifted)
+            summed_probabilities += probabilities / probabilities.sum()
+        # Upstream test.py sums each model's softmax output; class 1 is REAL.
+        real_probability = float(summed_probabilities[1] / len(self.models))
+        spoof_probability = float((summed_probabilities[0] + summed_probabilities[2]) / len(self.models))
+        is_real = int(np.argmax(summed_probabilities)) == 1 and real_probability >= self.real_threshold
         return AntiSpoofResult(
-            is_real=logit_difference >= self.logit_threshold,
-            real_probability=real_probability,
-            spoof_probability=spoof_probability,
-            logit_difference=logit_difference,
-            logit_threshold=self.logit_threshold,
-            track_id=detection.track_id,
-            created_at=time.monotonic(),
+            is_real, real_probability, spoof_probability, self.real_threshold,
+            detection.track_id, time.monotonic(),
         )
 
-    def _save_debug_images(
-        self, expanded_crop_bgr: np.ndarray, model_image_bgr: np.ndarray
-    ) -> None:
-        """Keep the latest crop and exact 128x128 image sent to MiniFAS."""
-        crop_path = self.debug_dir / "latest_crop.png"
-        input_path = self.debug_dir / "latest_input_128.png"
-        if not cv2.imwrite(str(crop_path), expanded_crop_bgr):
-            raise OSError(f"Could not save FAS crop image: {crop_path}")
-        if not cv2.imwrite(str(input_path), model_image_bgr):
-            raise OSError(f"Could not save FAS input image: {input_path}")
+
+def _scale_from_filename(filename: str) -> float:
+    stem = Path(filename).stem
+    if stem.startswith("2.7_"):
+        return 2.7
+    if stem.startswith(("4.0_", "4_")):
+        return 4.0
+    raise ValueError(f"Cannot determine Silent-Face crop scale from model filename: {filename}")
 
 
-def crop_face_for_fas(
-    frame_bgr: np.ndarray,
-    bbox: tuple[float, float, float, float],
-    expansion: float = 1.5,
+def _scale_label(scale: float) -> str:
+    return str(scale).replace(".", "_")
+
+
+def _bbox_xywh(bbox: tuple[float, float, float, float]) -> tuple[float, float, float, float]:
+    x1, y1, x2, y2 = bbox
+    left, top = int(np.floor(x1)), int(np.floor(y1))
+    right, bottom = int(np.ceil(x2)), int(np.ceil(y2))
+    return left, top, right - left, bottom - top
+
+
+def crop_silentface(
+    frame_bgr: np.ndarray, bbox: tuple[float, float, float, float],
+    scale: float, out_width: int = 80, out_height: int = 80,
 ) -> np.ndarray:
-    """Make a square expanded crop with the benchmark's reflected edge padding."""
+    """Replicate upstream CropImage._get_new_box and cv2.resize exactly."""
     frame = np.asarray(frame_bgr)
     if frame.ndim != 3 or frame.shape[2] != 3 or not frame.size:
-        raise ValueError("FAS crop input must be a non-empty BGR HxWx3 frame")
-    x1, y1, x2, y2 = bbox
-    box_width, box_height = x2 - x1, y2 - y1
-    if box_width <= 0 or box_height <= 0 or expansion <= 0:
-        raise ValueError("Invalid face bounding box or expansion factor")
-
-    expanded_size = max(box_width, box_height) * expansion
-    side = max(1, int(expanded_size))
-    center_x, center_y = (x1 + x2) / 2.0, (y1 + y2) / 2.0
-    left = int(center_x - expanded_size / 2)
-    top = int(center_y - expanded_size / 2)
-    right, bottom = left + side, top + side
-    height, width = frame.shape[:2]
-    crop = frame[max(0, top):min(height, bottom), max(0, left):min(width, right)]
+        raise ValueError("Silent-Face crop input must be a non-empty BGR frame")
+    x, y, box_w, box_h = bbox
+    if box_w <= 0 or box_h <= 0 or scale <= 0:
+        raise ValueError("Invalid Silent-Face bbox or scale")
+    src_h, src_w = frame.shape[:2]
+    scale = min((src_h - 1) / box_h, (src_w - 1) / box_w, scale)
+    new_w, new_h = box_w * scale, box_h * scale
+    cx, cy = x + box_w / 2, y + box_h / 2
+    left, top = int(cx - new_w / 2), int(cy - new_h / 2)
+    right, bottom = int(cx + new_w / 2), int(cy + new_h / 2)
+    if left < 0:
+        right -= left
+        left = 0
+    if top < 0:
+        bottom -= top
+        top = 0
+    if right > src_w - 1:
+        left -= right - src_w + 1
+        right = src_w - 1
+    if bottom > src_h - 1:
+        top -= bottom - src_h + 1
+        bottom = src_h - 1
+    left, top = max(0, left), max(0, top)
+    crop = frame[top:bottom + 1, left:right + 1]
     if crop.size == 0:
-        raise ValueError("Expanded face crop falls outside the camera frame")
-    padding = (
-        max(0, -left),
-        max(0, right - width),
-        max(0, -top),
-        max(0, bottom - height),
-    )
-    pad_left, pad_right, pad_top, pad_bottom = padding
-    crop = cv2.copyMakeBorder(
-        crop,
-        pad_top,
-        pad_bottom,
-        pad_left,
-        pad_right,
-        cv2.BORDER_REFLECT_101,
-    )
-    if crop.shape[:2] != (side, side):
-        raise ValueError(
-            f"Expanded crop should be {side}x{side}, got {crop.shape[1]}x{crop.shape[0]}"
-        )
-    return crop
-
-
-def preprocess_fas(
-    image_rgb: np.ndarray, size: int = 128
-) -> tuple[np.ndarray, np.ndarray]:
-    """Resize an RGB crop to a letterboxed [0,1] NCHW model tensor."""
-    height, width = image_rgb.shape[:2]
-    scale = size / max(height, width)
-    new_width, new_height = int(width * scale), int(height * scale)
-    interpolation = cv2.INTER_LANCZOS4 if scale > 1.0 else cv2.INTER_AREA
-    resized = cv2.resize(image_rgb, (new_width, new_height), interpolation=interpolation)
-    pad_width, pad_height = size - new_width, size - new_height
-    model_image = cv2.copyMakeBorder(
-        resized,
-        pad_height // 2,
-        pad_height - pad_height // 2,
-        pad_width // 2,
-        pad_width - pad_width // 2,
-        cv2.BORDER_REFLECT_101,
-    )
-    tensor = model_image.transpose(2, 0, 1)[None].astype(np.float32) / 255.0
-    return model_image, np.ascontiguousarray(tensor)
+        raise ValueError("Silent-Face crop is empty")
+    return cv2.resize(crop, (out_width, out_height))

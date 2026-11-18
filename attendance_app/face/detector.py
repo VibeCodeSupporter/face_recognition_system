@@ -36,5 +36,7 @@ class FaceDetection:
 class FaceDetector(Protocol):
     """Adapter contract for interchangeable detector backends."""
 
-    def detect(self, frame_bgr: np.ndarray) -> list[FaceDetection]:
+    def detect(
+        self, frame_bgr: np.ndarray, *, frame_id: int | None = None
+    ) -> list[FaceDetection]:
         """Detect faces in a BGR frame and return boxes in frame coordinates."""
