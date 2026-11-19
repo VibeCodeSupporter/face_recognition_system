@@ -1,40 +1,140 @@
 /* ==========================================================================
-   AppLayout — khung vùng protected (topbar + nội dung).
+   AppLayout Styles — Layout Quản trị Toàn màn hình (Sky Blue & Sun Gold)
    ========================================================================== */
-.app-layout {
+
+.app-portal-layout {
+  width: 100% !important;
+  min-height: 100vh;
+  background-color: #f8fafc;
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(14, 165, 233, 0.12) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(245, 158, 11, 0.10) 0px, transparent 50%),
+    linear-gradient(180deg, #f0f9ff 0%, #fffbeb 55%, #f8fafc 100%);
+  background-attachment: fixed;
+}
+
+.app-portal-main {
+  width: 100%;
+  background: transparent !important;
+}
+
+.app-portal-sider {
+  border-right: 1px solid #e0f2fe;
+  background: #ffffff !important;
+  box-shadow: 2px 0 12px rgba(14, 165, 233, 0.05);
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
-  min-height: 100svh;
-}
-
-.app-layout__topbar {
   position: sticky;
   top: 0;
-  z-index: 10;
-  padding-block: var(--space-sm);
-  padding-inline: var(--safe-inline-start) var(--safe-inline-end);
-  background: var(--color-surface);
-  border-bottom: 1px solid var(--color-border);
+  height: 100vh;
+  z-index: 100;
 }
 
-.app-layout__topbar-inner {
+.sider-brand-box {
+  padding: 16px 14px;
+  border-bottom: 1px solid #f1f5f9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(180deg, #f0f9ff 0%, #ffffff 100%);
+}
+
+.sider-footer-box {
+  margin-top: auto;
+  padding: 16px;
+  border-top: 1px solid #f1f5f9;
+  background: linear-gradient(180deg, #ffffff 0%, #fffbeb 100%);
+}
+
+.sider-swagger-link a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #0284c7;
+  font-weight: 500;
+  font-size: 13px;
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+.sider-swagger-link a:hover {
+  color: #0369a1;
+  text-decoration: underline;
+}
+
+.app-portal-header {
+  background: rgba(255, 255, 255, 0.96) !important;
+  backdrop-filter: blur(10px);
+  padding: 0 32px;
+  height: 64px;
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--space-md);
+  border-bottom: 2px solid;
+  border-image: linear-gradient(90deg, #0ea5e9 0%, #38bdf8 45%, #eab308 100%) 1;
+  box-shadow: 0 2px 10px rgba(14, 165, 233, 0.04);
+  position: sticky;
+  top: 0;
+  z-index: 99;
 }
 
-.app-layout__content {
-  flex: 1 1 auto;
-  width: 100%;
-  padding-block: var(--space-xl);
-  padding-inline: var(--safe-inline-start) var(--safe-inline-end);
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
 }
 
-/* Ẩn nhãn chữ của nút sign out trên màn hình hẹp, chỉ giữ icon */
-@media (max-width: 480px) {
-  .app-layout__signout-label {
+.collapse-trigger-btn {
+  font-size: 16px;
+  width: 36px;
+  height: 36px;
+  color: #0284c7;
+}
+
+.collapse-trigger-btn:hover {
+  background: #e0f2fe;
+  color: #0369a1;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+}
+
+/* Vùng nội dung FULL WIDTH trải rộng khắp màn hình */
+.app-portal-content {
+  padding: 24px 32px;
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow-y: auto;
+  background: transparent !important;
+}
+
+.content-inner {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+}
+
+/* Card đồng bộ tone màu sáng sủa, sắc nét */
+.content-inner .ant-card {
+  box-shadow: 0 2px 10px rgba(14, 165, 233, 0.06), 0 1px 3px rgba(234, 179, 8, 0.04);
+  border: 1px solid #e0f2fe;
+  background: #ffffff !important;
+  border-radius: 12px;
+}
+
+@media (max-width: 768px) {
+  .signout-text {
     display: none;
+  }
+
+  .app-portal-content {
+    padding: 12px 16px;
+  }
+
+  .app-portal-header {
+    padding: 0 16px;
   }
 }

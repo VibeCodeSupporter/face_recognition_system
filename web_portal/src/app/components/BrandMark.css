@@ -5,37 +5,45 @@
   line-height: 1.15;
 }
 
+.brand-mark--collapsed {
+  justify-content: center;
+  width: 100%;
+}
+
 .brand-mark__logo {
   display: grid;
   place-items: center;
   flex: none;
-  width: clamp(2.1rem, 1.9rem + 0.8vw, 2.6rem);
-  height: clamp(2.1rem, 1.9rem + 0.8vw, 2.6rem);
-  border-radius: var(--radius-md);
-  background: var(--gradient-brand);
+  width: clamp(2.2rem, 2rem + 0.8vw, 2.7rem);
+  height: clamp(2.2rem, 2rem + 0.8vw, 2.7rem);
+  border-radius: 12px;
+  background: linear-gradient(135deg, #0284c7 0%, #38bdf8 55%, #eab308 100%);
   color: #fff;
-  font-size: clamp(1rem, 0.9rem + 0.4vw, 1.25rem);
-  box-shadow: var(--shadow-sm);
+  font-size: clamp(1.1rem, 1rem + 0.4vw, 1.35rem);
+  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.28);
 }
 
 .brand-mark__text {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .brand-mark__name {
   font-size: var(--font-size-lg);
-  font-weight: 700;
-  letter-spacing: var(--letter-spacing-heading);
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.02em;
 }
 
 .brand-mark__product {
-  font-size: var(--font-size-xs);
-  font-weight: 600;
+  font-size: 11px;
+  font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.14em;
-  opacity: 0.7;
+  letter-spacing: 0.12em;
+  color: #0284c7;
 }
 
 /* ── Variants ────────────────────────────────────────────────────────── */
@@ -51,19 +59,21 @@
   color: #fff;
 }
 
+.brand-mark--light .brand-mark__name {
+  color: #ffffff;
+}
+
+.brand-mark--light .brand-mark__product {
+  color: #fef08a;
+}
+
 .brand-mark--light .brand-mark__logo {
-  background: rgba(255, 255, 255, 0.16);
-  border: 1px solid rgba(255, 255, 255, 0.28);
-  backdrop-filter: blur(6px);
+  background: rgba(255, 255, 255, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .brand-mark--dark {
-  color: var(--color-text-heading);
-}
-
-/* Trên màn hình rất nhỏ, bỏ dòng phụ để mark không bị xuống dòng */
-@media (max-width: 400px) {
-  .brand-mark__product {
-    display: none;
-  }
+  color: #0f172a;
 }

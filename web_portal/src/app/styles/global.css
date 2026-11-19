@@ -1,6 +1,5 @@
 /* ==========================================================================
    Global base styles — reset + nền trang + các tiện ích toàn cục.
-   antd đã tự lo style cho component; file này chỉ xử lý phần "khung xương".
    ========================================================================== */
 
 *,
@@ -14,8 +13,6 @@ html {
   text-size-adjust: 100%;
 }
 
-/* antd reset đặt html/body height: 100% — hạ về auto để trang cao bao nhiêu
-   cũng scroll bình thường (tránh bị cắt trên trình duyệt mobile). */
 html,
 body {
   height: auto;
@@ -30,14 +27,13 @@ body {
   font-size: var(--font-size-md);
   line-height: var(--line-height-base);
   color: var(--color-text);
-  background-color: var(--color-bg);
+  background-color: #f8fafc;
   background-image: var(--gradient-page);
   background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* #root là vùng render của React: luôn full-width/full-height cho mọi kích thước */
 #root {
   display: block;
   width: 100%;
@@ -66,20 +62,25 @@ svg {
 
 a {
   color: var(--color-primary);
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+a:hover {
+  color: var(--color-primary-hover);
 }
 
 ::selection {
-  background: var(--brand-200);
-  color: var(--brand-900);
+  background: #bae6fd;
+  color: #0369a1;
 }
 
 :focus-visible {
-  outline: 3px solid rgba(124, 29, 255, 0.45);
+  outline: 3px solid rgba(14, 165, 233, 0.45);
   outline-offset: 2px;
   border-radius: var(--radius-sm);
 }
 
-/* ── Utilities ───────────────────────────────────────────────────────── */
 .u-visually-hidden {
   position: absolute;
   width: 1px;
@@ -92,11 +93,15 @@ a {
   border: 0;
 }
 
-/* Vùng nội dung giới hạn bề rộng cho màn hình siêu rộng (≥ 1920px) */
+/* Vùng nội dung toàn màn hình (full-width) */
 .u-content-max-width {
   width: 100%;
-  max-width: var(--layout-max-width);
-  margin-inline: auto;
+  max-width: 100%;
+}
+
+/* Compact management tables: center headings while keeping row content readable. */
+.centered-table-header .ant-table-thead > tr > th {
+  text-align: center;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -1,12 +1,11 @@
-/** Thông tin định danh sản phẩm — dùng chung cho header, brand panel, title. */
+/** Thông tin định danh sản phẩm FaceAccess. */
 export const APP_INFO = {
-  name: 'Face Access',
-  portalName: 'Cloud Portal',
-  tagline: 'Face recognition access control',
-  /** Mô tả ngắn dùng cho phần giới thiệu ở màn hình đăng nhập. */
-  headline: 'Access control, fully under control.',
+  name: 'FaceAccess',
+  portalName: 'Kiểm soát Ra vào',
+  tagline: 'Hệ thống nhận diện khuôn mặt kiểm soát ra vào',
+  headline: 'Kiểm soát ra vào thông minh & Nhận diện khuôn mặt',
   description:
-    'Manage users, face enrollment, Edge devices and access history in one place — while every door keeps working even when the cloud is offline.',
+    'Quản lý nhân sự, thiết bị cửa, phiên đăng ký vector khuôn mặt và lịch sử ra vào thời gian thực.',
 }
 
 export default APP_INFO
