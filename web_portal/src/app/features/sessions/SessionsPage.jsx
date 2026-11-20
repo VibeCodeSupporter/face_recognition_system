@@ -117,7 +117,7 @@ export default function SessionsPage() {
       ])
       setUsers(userList)
       setDevices(deviceList)
-    } catch (_) {}
+    } catch (_) { }
   }
 
   const fetchSessions = async () => {
@@ -149,6 +149,42 @@ export default function SessionsPage() {
     fetchSessions()
   }, [page, pageSize, statusFilter, userFilter, deviceFilter])
 
+  useEffect(() => {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const wsHost = (window.location.port === '3000' || window.location.port === '5173') ? '127.0.0.1:5000' : window.location.host
+    const wsUrl = `${protocol}//${wsHost}/api/v1/ws/portal`
+    let ws = null
+    let timer = null
+
+    function connect() {
+      try {
+        ws = new WebSocket(wsUrl)
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data)
+            if (data.event === 'SESSION_CREATED' || data.event === 'SESSION_FINALIZED') {
+              fetchSessions()
+            }
+          } catch (_) { }
+        }
+        ws.onclose = () => {
+          timer = setTimeout(connect, 3000)
+        }
+      } catch (_) {
+        timer = setTimeout(connect, 3000)
+      }
+    }
+    connect()
+
+    return () => {
+      if (timer) clearTimeout(timer)
+      if (ws) {
+        ws.onclose = null
+        ws.close()
+      }
+    }
+  }, [])
+
   const handleUpdateStatus = async (id, status) => {
     try {
       await sessionService.updateStatus(id, status)
@@ -156,8 +192,8 @@ export default function SessionsPage() {
         status === 'completed'
           ? 'Đã hoàn tất phiên đăng ký!'
           : status === 'cancelled'
-          ? 'Đã hủy phiên đăng ký.'
-          : 'Đã đánh dấu phiên thất bại.'
+            ? 'Đã hủy phiên đăng ký.'
+            : 'Đã đánh dấu phiên thất bại.'
       )
       fetchSessions()
     } catch (error) {

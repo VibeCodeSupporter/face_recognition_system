@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { EyeOutlined, ReloadOutlined } from '@ant-design/icons'
-import { App as AntdApp, Button, Card, Descriptions, Modal, Select, Space, Table, Tag, Typography } from 'antd'
+import { App as AntdApp, Avatar, Button, Card, Descriptions, Modal, Select, Space, Table, Tag, Typography } from 'antd'
 import deviceService from '../../services/deviceService.js'
 import logService from '../../services/logService.js'
 import userService from '../../services/userService.js'
@@ -50,12 +50,69 @@ export default function LogsPage() {
 
   useEffect(() => { loadLogs() }, [resultFilter])
 
+  useEffect(() => {
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const wsHost = (window.location.port === '3000' || window.location.port === '5173') ? '127.0.0.1:5000' : window.location.host
+    const wsUrl = `${protocol}//${wsHost}/api/v1/ws/portal`
+    let ws = null
+    let timer = null
+
+    function connect() {
+      try {
+        ws = new WebSocket(wsUrl)
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data)
+            if (data.event === 'NEW_ACCESS_LOG' && data.log) {
+              setLogs((prev) => [data.log, ...prev.filter((l) => l.id !== data.log.id)])
+              const resText = data.log.result === 'granted' ? 'Cho phép' : 'Từ chối'
+              message.info(`Lượt truy cập mới: ${resText}`)
+            }
+          } catch (_) {}
+        }
+        ws.onclose = () => {
+          timer = setTimeout(connect, 3000)
+        }
+      } catch (_) {
+        timer = setTimeout(connect, 3000)
+      }
+    }
+    connect()
+
+    return () => {
+      if (timer) clearTimeout(timer)
+      if (ws) {
+        ws.onclose = null
+        ws.close()
+      }
+    }
+  }, [])
+
   const userMap = useMemo(() => Object.fromEntries(users.map((user) => [user.id, user])), [users])
   const deviceMap = useMemo(() => Object.fromEntries(devices.map((device) => [device.id, device])), [devices])
 
   const columns = [
     { title: 'Thời gian', dataIndex: 'access_time', key: 'access_time', width: 125, render: formatDateTime },
-    { title: 'Nhân viên', key: 'user', width: 180, render: (_, record) => record.user_id ? (userMap[record.user_id]?.full_name || <Text type="secondary">Nhân viên không còn trong hệ thống</Text>) : <Tag>Khách</Tag> },
+    {
+      title: 'Nhân viên / Ảnh',
+      key: 'user',
+      width: 220,
+      render: (_, record) => {
+        if (!record.user_id) return <Tag>Khách</Tag>
+        const u = userMap[record.user_id]
+        if (!u) return <Text type="secondary">Nhân viên không còn trong hệ thống</Text>
+        const initial = (u.full_name || '?').charAt(0).toUpperCase()
+        return (
+          <Space>
+            <Avatar size="small" style={{ backgroundColor: '#0284c7', color: '#fff', fontWeight: 600 }}>
+              {initial}
+            </Avatar>
+            <span>{u.full_name}</span>
+            {u.user_code && <Text type="secondary" style={{ fontSize: 11 }}>({u.user_code})</Text>}
+          </Space>
+        )
+      },
+    },
     { title: 'Thiết bị', key: 'device', width: 180, render: (_, record) => deviceMap[record.device_id]?.name || <Text code>{record.device_id?.slice(0, 8)}…</Text> },
     { title: 'Kết quả', dataIndex: 'result', key: 'result', width: 110, render: (value) => value === 'granted' ? <Tag color="success">Cho phép</Tag> : <Tag color="error">Từ chối</Tag> },
     { title: 'Tin cậy', dataIndex: 'confidence', key: 'confidence', width: 90, render: (value) => value == null ? '—' : `${Number(value).toFixed(1)}%` },
@@ -74,9 +131,21 @@ export default function LogsPage() {
     <Modal title="Chi tiết lượt truy cập" open={Boolean(selectedLog)} onCancel={() => setSelectedLog(null)} footer={<Button onClick={() => setSelectedLog(null)}>Đóng</Button>}>
       {selectedLog && <Descriptions bordered column={1} size="small">
         <Descriptions.Item label="Thời gian">{formatDateTime(selectedLog.access_time)}</Descriptions.Item>
-        <Descriptions.Item label="Nhân viên">{selectedLog.user_id ? (userMap[selectedLog.user_id]?.full_name || selectedLog.user_id) : 'Khách'}</Descriptions.Item>
+        <Descriptions.Item label="Nhân viên">
+          {selectedLog.user_id ? (
+            <Space>
+              <Avatar size="default" style={{ backgroundColor: '#0284c7', color: '#fff', fontWeight: 600 }}>
+                {((userMap[selectedLog.user_id]?.full_name) || '?').charAt(0).toUpperCase()}
+              </Avatar>
+              <div>
+                <div><strong>{userMap[selectedLog.user_id]?.full_name || selectedLog.user_id}</strong></div>
+                {userMap[selectedLog.user_id]?.user_code && <Text type="secondary" style={{ fontSize: 12 }}>Mã NV: {userMap[selectedLog.user_id].user_code}</Text>}
+              </div>
+            </Space>
+          ) : <Tag>Khách</Tag>}
+        </Descriptions.Item>
         <Descriptions.Item label="Thiết bị">{deviceMap[selectedLog.device_id]?.name || selectedLog.device_id}</Descriptions.Item>
-        <Descriptions.Item label="Kết quả">{selectedLog.result === 'granted' ? 'Cho phép' : 'Từ chối'}</Descriptions.Item>
+        <Descriptions.Item label="Kết quả">{selectedLog.result === 'granted' ? <Tag color="success">Cho phép</Tag> : <Tag color="error">Từ chối</Tag>}</Descriptions.Item>
         <Descriptions.Item label="Độ tin cậy">{selectedLog.confidence == null ? '—' : `${Number(selectedLog.confidence).toFixed(1)}%`}</Descriptions.Item>
         <Descriptions.Item label="Mã sự kiện">{selectedLog.id}</Descriptions.Item>
       </Descriptions>}

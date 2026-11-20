@@ -1,9 +1,11 @@
+import json
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Query, Request, Response, Security
+from fastapi import APIRouter, Query, Request, Response, Security, WebSocket, WebSocketDisconnect
 from fastapi.security import APIKeyHeader
 
+from app.websocket_manager import manager as ws_manager
 from app.dto.access_logs import AccessLogCreate, AccessLogQuery
 
 from app.dto.auth import LoginRequest, ProfileUpdateRequest
@@ -14,6 +16,7 @@ from app.dto.registration_sessions import SessionCreate, SessionPatch, SessionQu
 from app.dto.users import UserCreate, UserPatch, UserQuery
 
 router = APIRouter(prefix="/api/v1", dependencies=[Security(APIKeyHeader(name="x-api-key", auto_error=False))])
+ws_router = APIRouter(prefix="/api/v1")
 
 
 
@@ -152,8 +155,17 @@ def list_sessions(request: Request, query: Annotated[SessionQuery, Query()]):
 
 
 @router.post("/registration-sessions", status_code=201, tags=["Registration Sessions"])
-def create_session(request: Request, body: SessionCreate):
-    return {"data": request.app.state.services.sessions.create(body.payload())}
+async def create_session(request: Request, body: SessionCreate):
+    created = request.app.state.services.sessions.create(body.payload())
+    await ws_manager.send_to_device(str(body.device_id), {
+        "event": "NEW_REGISTRATION_SESSION",
+        "session": created,
+    })
+    await ws_manager.broadcast_to_portal({
+        "event": "SESSION_CREATED",
+        "session": created,
+    })
+    return {"data": created}
 
 
 @router.get("/registration-sessions/{record_id}", tags=["Registration Sessions"])
@@ -162,8 +174,13 @@ def get_session(record_id: UUID, request: Request):
 
 
 @router.patch("/registration-sessions/{record_id}", tags=["Registration Sessions"])
-def update_session(record_id: UUID, request: Request, body: SessionPatch):
-    return {"data": request.app.state.services.sessions.update(str(record_id), body.payload())}
+async def update_session(record_id: UUID, request: Request, body: SessionPatch):
+    updated = request.app.state.services.sessions.update(str(record_id), body.payload())
+    await ws_manager.broadcast_to_portal({
+        "event": "SESSION_FINALIZED",
+        "session": updated,
+    })
+    return {"data": updated}
 
 
 @router.delete("/registration-sessions/{record_id}", status_code=204, tags=["Registration Sessions"])
@@ -178,12 +195,46 @@ def list_logs(request: Request, query: Annotated[AccessLogQuery, Query()]):
 
 
 @router.post("/access-logs", status_code=201, tags=["Access Logs"])
-def create_log(request: Request, response: Response, body: AccessLogCreate):
+async def create_log(request: Request, response: Response, body: AccessLogCreate):
     data, created = request.app.state.services.logs.create(body.payload())
     response.status_code = 201 if created else 200
+    if created:
+        await ws_manager.broadcast_to_portal({
+            "event": "NEW_ACCESS_LOG",
+            "log": data,
+        })
     return {"data": data}
 
 
 @router.get("/access-logs/{record_id}", tags=["Access Logs"])
 def get_log(record_id: UUID, request: Request):
     return {"data": request.app.state.services.logs.get(str(record_id))}
+
+
+#======================================WEBSOCKET====================================
+
+@ws_router.websocket("/ws/devices/{device_id}")
+async def ws_device_endpoint(websocket: WebSocket, device_id: str):
+    await ws_manager.connect_device(device_id, websocket)
+    try:
+        while True:
+            text = await websocket.receive_text()
+            try:
+                msg = json.loads(text)
+                if msg.get("event") == "PING":
+                    await websocket.send_text(json.dumps({"event": "PONG"}))
+            except Exception:
+                pass
+    except WebSocketDisconnect:
+        ws_manager.disconnect_device(device_id, websocket)
+
+
+@ws_router.websocket("/ws/portal")
+async def ws_portal_endpoint(websocket: WebSocket):
+    await ws_manager.connect_portal(websocket)
+    try:
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        ws_manager.disconnect_portal(websocket)
+
