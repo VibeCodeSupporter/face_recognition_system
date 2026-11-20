@@ -456,4 +456,40 @@ $('#copy-token').addEventListener('click', async () => {
   catch { toast('Không sao chép được. Bạn có thể chọn token để sao chép thủ công.', true); }
 });
 window.addEventListener('pagehide', () => { Api.key = ''; App.token = ''; });
+
+function initRealtimeWebSocket() {
+  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const host = (location.port && location.port !== '5000') ? '127.0.0.1:5000' : location.host;
+  const wsUrl = `${protocol}//${host}/api/v1/ws/portal`;
+  let ws = null;
+  function connect() {
+    try {
+      ws = new WebSocket(wsUrl);
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.event === 'NEW_ACCESS_LOG') {
+            const resText = data.log?.result === 'granted' ? 'Cho phép truy cập' : 'Từ chối';
+            toast(`Sự kiện quẹt mặt mới: ${resText}`);
+            if (App.view === 'logs' && App.page === 0) {
+              void loadView();
+            }
+          } else if (data.event === 'SESSION_FINALIZED' || data.event === 'SESSION_CREATED') {
+            const evText = data.event === 'SESSION_CREATED' ? 'Có phiên đăng ký mới' : 'Phiên đăng ký đã hoàn tất';
+            toast(evText);
+            if (App.view === 'sessions') {
+              void loadView();
+            }
+          }
+        } catch (e) {}
+      };
+      ws.onclose = () => { setTimeout(connect, 3000); };
+    } catch (e) {
+      setTimeout(connect, 3000);
+    }
+  }
+  connect();
+}
+initRealtimeWebSocket();
+
 navigate('users');

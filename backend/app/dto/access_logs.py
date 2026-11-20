@@ -10,7 +10,7 @@ LogResult = Literal["granted", "denied"]
 
 class AccessLogCreate(DTO):
     id: UUID
-    user_id: UUID | None = None
+    user_id: str | None = None
     device_id: UUID
     result: LogResult
     confidence: float | None = Field(default=None, strict=True, ge=0, le=100)
@@ -18,7 +18,7 @@ class AccessLogCreate(DTO):
 
     @model_validator(mode="after")
     def recognized_grant(self):
-        if self.result == "granted" and self.user_id is None:
+        if self.result == "granted" and not self.user_id:
             raise ValueError("Granted access requires a recognized user.")
         return self
 

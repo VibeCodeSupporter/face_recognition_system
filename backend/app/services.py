@@ -70,7 +70,32 @@ class SessionService(CRUDService):
         user = self.repositories.users.get(values["user_id"])
         if user["status"] != "active":
             raise AppError(409, "USER_INACTIVE", "An inactive user cannot start enrollment.")
+
+        # 1. Chặn tạo phiên nếu người dùng đã có face embedding trong hệ thống
+        try:
+            self.repositories.embeddings.get(values["user_id"])
+            raise AppError(
+                409,
+                "USER_ALREADY_REGISTERED",
+                "Người dùng này đã có dữ liệu khuôn mặt trong hệ thống. Không thể tạo phiên đăng ký mới.",
+            )
+        except AppError as e:
+            if e.code != "NOT_FOUND":
+                raise
+
+        # 2. Chặn tạo phiên trùng lặp nếu người dùng đang có một phiên pending khác
+        user_pending = self.repository.list({"user_id": values["user_id"], "status": "pending", "limit": 1, "offset": 0})
+        if user_pending.get("items"):
+            raise AppError(
+                409,
+                "USER_HAS_PENDING_SESSION",
+                "Người dùng này hiện đã có một phiên đăng ký đang chờ xử lý.",
+            )
+
         self.repositories.devices.get(values["device_id"])
+        pending = self.repository.list({"device_id": values["device_id"], "status": "pending", "limit": 10, "offset": 0})
+        if len(pending.get("items", [])) >= 10:
+            raise AppError(429, "DEVICE_QUEUE_FULL", "Thiết bị hiện đã có 10 phiên đang chờ xử lý. Vui lòng đợi thiết bị hoàn tất các phiên trước.")
         return self.repository.insert(values)
 
     def update(self, record_id: str, values: dict):
@@ -90,8 +115,9 @@ class SessionService(CRUDService):
 
 
 class AccessLogService:
-    def __init__(self, repository: TableRepository):
+    def __init__(self, repository: TableRepository, users_repo: TableRepository | None = None):
         self.repository = repository
+        self.users_repo = users_repo
 
     def list(self, options: dict):
         return self.repository.list(options)
@@ -101,6 +127,21 @@ class AccessLogService:
 
     def create(self, values: dict) -> tuple[dict, bool]:
         record = {"user_id": None, "confidence": None, **values}
+        uid = record.get("user_id")
+        if uid is not None:
+            from uuid import UUID
+            try:
+                UUID(str(uid))
+            except (ValueError, TypeError):
+                # Identifier is not a UUID, resolve from user_code
+                if self.users_repo is not None:
+                    users = self.users_repo.list_all({"user_code": str(uid)})
+                    if users:
+                        record["user_id"] = users[0]["id"]
+                    else:
+                        raise AppError(404, "USER_NOT_FOUND", f"User code '{uid}' not found.")
+                else:
+                    raise AppError(400, "INVALID_USER_ID", f"Invalid user ID format: '{uid}'")
         try:
             return self.repository.insert(record), True
         except AppError as error:
@@ -244,7 +285,7 @@ class Services:
         self.devices = DeviceService(repositories.devices)
         self.embeddings = EmbeddingService(repositories)
         self.sessions = SessionService(repositories)
-        self.logs = AccessLogService(repositories.logs)
+        self.logs = AccessLogService(repositories.logs, repositories.users)
 
         self.auth = AuthService(settings)
 
