@@ -2,10 +2,15 @@
 
 from __future__ import annotations
 
+import logging
+from time import perf_counter
+
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot
 
 from face.pipeline import FaceEmbedding
 from recognition.recognition_service import RecognitionService
+
+logger = logging.getLogger(__name__)
 
 
 class RecognitionController(QObject):
@@ -20,9 +25,19 @@ class RecognitionController(QObject):
 
     @pyqtSlot(object)
     def identify(self, embedding: FaceEmbedding) -> None:
+        started = perf_counter()
         try:
             match = self.service.identify(embedding.vector)
         except Exception as error:
+            logger.exception(
+                "Gallery search failed after %.2f ms",
+                (perf_counter() - started) * 1000.0,
+            )
             self.error.emit(f"Local vector search failed: {error}")
             return
+        logger.info(
+            "Gallery search completed in %.2f ms (match=%s)",
+            (perf_counter() - started) * 1000.0,
+            match is not None,
+        )
         self.result_ready.emit(embedding, match)

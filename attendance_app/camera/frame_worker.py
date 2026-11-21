@@ -6,6 +6,7 @@ import logging
 import time
 from collections import Counter
 from threading import Lock
+from time import perf_counter
 from PyQt6.QtCore import QThread, pyqtSignal
 from PyQt6.QtGui import QImage
 
@@ -233,12 +234,16 @@ class FrameWorker(QThread):
         stats_detect_calls = stats_recognition_calls = stats_embeddings = 0
         stats_gate_skips = Counter()
         stats_outcomes = Counter()
+        timing_totals = Counter()
+        timing_counts = Counter()
+        timing_maxima: dict[str, float] = {}
         previous_frame_id = None
         while self._running:
             ok, frame_bgr, frame_id, captured_at = self.camera.read()
             if not ok:
                 self.camera_error.emit("Camera đang mở nhưng không đọc được frame.")
                 break
+            processing_started = perf_counter()
             sequence_delta = (
                 1 if previous_frame_id is None
                 else max(1, frame_id - previous_frame_id)
@@ -248,6 +253,7 @@ class FrameWorker(QThread):
             stats_worker_frames += 1
             stats_dropped_frames += max(0, sequence_delta - 1)
             pending_embedding = None
+            frame_timings_ms: dict[str, float] = {}
             frame_fas_result = None
             frame_error = ""
             frame_outcome = "NO_FACE"
@@ -264,7 +270,9 @@ class FrameWorker(QThread):
             elif detector is not None:
                 try:
                     stats_detect_calls += 1
+                    stage_started = perf_counter()
                     full_frame_detections = detector.detect(frame_bgr, frame_id=frame_id)
+                    frame_timings_ms["detect_ms"] = (perf_counter() - stage_started) * 1000.0
                     frame_height, frame_width = frame_bgr.shape[:2]
                     roi_left, roi_top, roi_right, roi_bottom = face_roi_bounds(
                         frame_width, frame_height
@@ -273,6 +281,7 @@ class FrameWorker(QThread):
                     margin_y = round((roi_bottom - roi_top) * 0.01)
                     safe_left, safe_top = roi_left + margin_x, roi_top + margin_y
                     safe_right, safe_bottom = roi_right - margin_x, roi_bottom - margin_y
+                    stage_started = perf_counter()
                     detections = [
                         detection
                         for detection in full_frame_detections
@@ -281,8 +290,11 @@ class FrameWorker(QThread):
                         and detection.bbox[2] <= safe_right
                         and detection.bbox[3] <= safe_bottom
                     ]
+                    frame_timings_ms["roi_filter_ms"] = (perf_counter() - stage_started) * 1000.0
                     if face_tracker is not None:
+                        stage_started = perf_counter()
                         detections = face_tracker.update(detections)
+                        frame_timings_ms["tracker_ms"] = (perf_counter() - stage_started) * 1000.0
                     if len(detections) == 1:
                         frame_outcome = "ERROR"
                         if self.registration_mode:
@@ -301,6 +313,7 @@ class FrameWorker(QThread):
                                         "accepted": "ALL_PASS",
                                         "error": "ERROR",
                                     }.get(frame_status.phase, "ERROR")
+                                    frame_timings_ms.update(frame_status.timings_ms)
                                     if fas_result is not None:
                                         frame_fas_result = fas_result
                                         self.antispoof_result.emit(fas_result)
@@ -331,6 +344,7 @@ class FrameWorker(QThread):
                                         timestamp=captured_at,
                                     )
                                     frame_outcome = frame_result.outcome
+                                    frame_timings_ms.update(frame_result.timings_ms)
                                     quality_result = frame_result.quality
                                     pending_embedding = frame_result.embedding
                                     if frame_result.error:
@@ -406,12 +420,21 @@ class FrameWorker(QThread):
                         self._recognition_in_flight = True
                 stats_embeddings += 1
                 self.embedding_ready.emit(pending_embedding)
+            frame_timings_ms["worker_frame_ms"] = (
+                perf_counter() - processing_started
+            ) * 1000.0
+            for name, duration in frame_timings_ms.items():
+                timing_totals[name] += duration
+                timing_counts[name] += 1
+                timing_maxima[name] = max(timing_maxima.get(name, 0.0), duration)
+            now = time.monotonic()
             stats_elapsed = now - stats_started_at
             if stats_elapsed >= settings.FRAME_WORKER_STATS_INTERVAL_SECONDS:
                 logger.info(
                     "Frame stats %.2fs: camera=%.1f fps worker=%.1f fps "
                     "dropped=%.1f fps detect=%.1f/s recognition=%.1f/s "
-                    "embeddings=%.1f/s gate_skips=%s outcomes=%s",
+                    "embeddings=%.1f/s gate_skips=%s outcomes=%s "
+                    "stage_avg_ms=%s stage_max_ms=%s",
                     stats_elapsed,
                     stats_camera_frames / stats_elapsed,
                     stats_worker_frames / stats_elapsed,
@@ -421,12 +444,17 @@ class FrameWorker(QThread):
                     stats_embeddings / stats_elapsed,
                     dict(stats_gate_skips),
                     dict(stats_outcomes),
+                    {name: round(total / timing_counts[name], 2) for name, total in timing_totals.items()},
+                    {name: round(duration, 2) for name, duration in timing_maxima.items()},
                 )
                 stats_started_at = now
                 stats_camera_frames = stats_worker_frames = stats_dropped_frames = 0
                 stats_detect_calls = stats_recognition_calls = stats_embeddings = 0
                 stats_gate_skips.clear()
                 stats_outcomes.clear()
+                timing_totals.clear()
+                timing_counts.clear()
+                timing_maxima.clear()
             self.msleep(5)
 
         self.preview_worker.stop()

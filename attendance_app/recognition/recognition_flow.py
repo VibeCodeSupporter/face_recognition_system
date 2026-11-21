@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from time import perf_counter
 import time
 
 import numpy as np
@@ -32,6 +33,7 @@ class RecognitionFrameResult:
     antispoof: AntiSpoofResult | None
     embedding: FaceEmbedding | None
     error: str | None = None
+    timings_ms: dict[str, float] = field(default_factory=dict)
 
 
 class RecognitionFlow:
@@ -49,6 +51,8 @@ class RecognitionFlow:
         frame_number: int,
         timestamp: float,
     ) -> RecognitionFrameResult:
+        timings: dict[str, float] = {}
+        started = perf_counter()
         pose = self.quality_checker.estimate_pose(
             detection.landmarks, frame_bgr.shape[1], frame_bgr.shape[0]
         )
@@ -57,47 +61,64 @@ class RecognitionFlow:
             settings.FACE_RECOGNITION_MAX_PITCH_DEGREES,
             settings.FACE_RECOGNITION_MAX_ROLL_DEGREES,
         )
+        timings["pose_ms"] = (perf_counter() - started) * 1000.0
         if pose is None or any(
             abs(value) > limit for value, limit in zip(pose, pose_limits)
         ):
             return RecognitionFrameResult(
                 frame_number, timestamp, 1, "POSE_FAIL", "FAIL",
                 "NOT_EVALUATED", "NOT_EVALUATED", None, None, None,
+                timings_ms=dict(timings),
             )
 
+        started = perf_counter()
         quality = self.quality_checker.evaluate(
             frame_bgr, detection, frame_id=frame_number
         )
+        timings["quality_ms"] = (perf_counter() - started) * 1000.0
         if not quality.passed:
             return RecognitionFrameResult(
                 frame_number, timestamp, 1, "QUALITY_FAIL", "PASS", "FAIL",
                 "NOT_EVALUATED", quality, None, None,
+                timings_ms=dict(timings),
             )
 
-        fas_result = self.pipeline.anti_spoof.predict(
+        started = perf_counter()
+        fas_inputs = self.pipeline.anti_spoof.prepare_inputs(
             frame_bgr, detection, frame_id=frame_number
         )
+        timings["fas_prepare_ms"] = (perf_counter() - started) * 1000.0
+        started = perf_counter()
+        fas_result = self.pipeline.anti_spoof.predict_prepared(fas_inputs, detection)
+        timings["fas_infer_ms"] = (perf_counter() - started) * 1000.0
         if not fas_result.is_real:
             return RecognitionFrameResult(
                 frame_number, timestamp, 1, "FAS_FAIL", "PASS", "PASS",
                 "FAIL", quality, fas_result, None,
+                timings_ms=dict(timings),
             )
 
+        started = perf_counter()
         try:
             aligned_rgb = self.pipeline.align_detection(
                 frame_bgr, detection, frame_id=frame_number
             )
+            timings["alignment_ms"] = (perf_counter() - started) * 1000.0
         except AlignmentError as error:
             return RecognitionFrameResult(
                 frame_number, timestamp, 1, "ALIGNMENT_FAIL", "PASS", "PASS",
                 "PASS", quality, fas_result, None, str(error),
+                dict(timings),
             )
+        started = perf_counter()
         try:
             vector = self.pipeline.embed_aligned(aligned_rgb)
+            timings["embedding_ms"] = (perf_counter() - started) * 1000.0
         except EmbeddingError as error:
             return RecognitionFrameResult(
                 frame_number, timestamp, 1, "EMBEDDING_ERROR", "PASS", "PASS",
                 "PASS", quality, fas_result, None, str(error),
+                dict(timings),
             )
         embedding = FaceEmbedding(
             vector=vector,
@@ -108,5 +129,5 @@ class RecognitionFlow:
         )
         return RecognitionFrameResult(
             frame_number, timestamp, 1, "ALL_PASS", "PASS", "PASS", "PASS",
-            quality, fas_result, embedding,
+            quality, fas_result, embedding, timings_ms=dict(timings),
         )
