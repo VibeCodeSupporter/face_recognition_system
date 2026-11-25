@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
+  ClearOutlined,
   DeleteOutlined,
   DeploymentUnitOutlined,
   EditOutlined,
@@ -23,11 +24,20 @@ import {
 } from 'antd'
 import deviceService from '../../services/deviceService.js'
 import { getErrorMessage } from '../../services/apiClient.js'
+import { useAuth } from '../../providers/AuthProvider.jsx'
 import DeviceDetailModal from './DeviceDetailModal.jsx'
 import DeviceFormModal from './DeviceFormModal.jsx'
 import DeviceTokenModal from './DeviceTokenModal.jsx'
 
 const { Title, Text } = Typography
+
+const normalizeText = (str) =>
+  (str || '')
+    .toString()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
 
 const STATUS_TAGS = {
   online: { label: 'Online', color: 'success' },
@@ -46,10 +56,13 @@ function renderCompactDateTime(value) {
 
 export default function DevicesPage() {
   const { message } = AntdApp.useApp()
+  const { hasPermission } = useAuth()
+  const canCreateDevice = hasPermission('devices:create')
+  const canUpdateDevice = hasPermission('devices:update')
+  const canDeleteDevice = hasPermission('devices:delete')
 
   const [devices, setDevices] = useState([])
   const [loading, setLoading] = useState(false)
-  const [total, setTotal] = useState(0)
 
   // Filters & Pagination
   const [page, setPage] = useState(1)
@@ -70,16 +83,8 @@ export default function DevicesPage() {
   const fetchDevices = async () => {
     setLoading(true)
     try {
-      const params = {
-        limit: pageSize,
-        offset: (page - 1) * pageSize,
-      }
-      if (statusFilter) params.status = statusFilter
-      if (deviceCodeFilter.trim()) params.device_code = deviceCodeFilter.trim()
-
-      const data = await deviceService.listDevices(params)
-      setDevices(data.items || [])
-      setTotal(data.total || (data.items || []).length)
+      const items = await deviceService.listAllDevices()
+      setDevices(items || [])
     } catch (error) {
       message.error(getErrorMessage(error))
     } finally {
@@ -89,7 +94,21 @@ export default function DevicesPage() {
 
   useEffect(() => {
     fetchDevices()
-  }, [page, pageSize, statusFilter, deviceCodeFilter])
+  }, [])
+
+  const filteredDevices = useMemo(() => {
+    const q = normalizeText(deviceCodeFilter)
+    return devices.filter((d) => {
+      if (statusFilter && d.status !== statusFilter) return false
+      if (q) {
+        const matchCode = normalizeText(d.device_code).includes(q)
+        const matchName = normalizeText(d.name).includes(q)
+        const matchLocation = normalizeText(d.location).includes(q)
+        if (!matchCode && !matchName && !matchLocation) return false
+      }
+      return true
+    })
+  }, [devices, statusFilter, deviceCodeFilter])
 
   const handleDeleteDevice = async (id) => {
     try {
@@ -197,41 +216,45 @@ export default function DevicesPage() {
       title: <span style={{ display: 'block', textAlign: 'center' }}>Thao tác</span>,
       key: 'actions',
       align: 'center',
-      width: 145,
+      width: canUpdateDevice || canDeleteDevice ? 145 : 85,
       render: (_, record) => (
         <Space size="small" style={{ whiteSpace: 'nowrap' }}>
           <Tooltip title="Xem chi tiết">
             <Button
               type="text"
-              icon={<EyeOutlined />}
+              icon={<EyeOutlined style={{ color: '#0284c7' }} />}
               onClick={() => {
                 setSelectedDeviceForDetail(record)
                 setDetailModalOpen(true)
               }}
             />
           </Tooltip>
-          <Tooltip title="Sửa thiết bị">
-            <Button
-              type="text"
-              icon={<EditOutlined />}
-              onClick={() => {
-                setSelectedDeviceForEdit(record)
-                setFormModalOpen(true)
-              }}
-            />
-          </Tooltip>
-          <Popconfirm
-            title="Xác nhận xóa thiết bị?"
-            description={`Bạn có chắc muốn xóa thiết bị "${record.name}"?`}
-            onConfirm={() => handleDeleteDevice(record.id)}
-            okText="Xóa"
-            cancelText="Hủy"
-            okButtonProps={{ danger: true }}
-          >
-            <Tooltip title="Xóa thiết bị">
-              <Button type="text" danger icon={<DeleteOutlined />} />
+          {canUpdateDevice && (
+            <Tooltip title="Sửa thiết bị">
+              <Button
+                type="text"
+                icon={<EditOutlined style={{ color: '#0ea5e9' }} />}
+                onClick={() => {
+                  setSelectedDeviceForEdit(record)
+                  setFormModalOpen(true)
+                }}
+              />
             </Tooltip>
-          </Popconfirm>
+          )}
+          {canDeleteDevice && (
+            <Popconfirm
+              title="Xác nhận xóa thiết bị?"
+              description={`Bạn có chắc muốn xóa thiết bị "${record.name}"?`}
+              onConfirm={() => handleDeleteDevice(record.id)}
+              okText="Xóa"
+              cancelText="Hủy"
+              okButtonProps={{ danger: true }}
+            >
+              <Tooltip title="Xóa thiết bị">
+                <Button type="text" danger icon={<DeleteOutlined />} />
+              </Tooltip>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
@@ -259,30 +282,32 @@ export default function DevicesPage() {
           <Button icon={<ReloadOutlined />} onClick={fetchDevices} loading={loading}>
             Tải lại
           </Button>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => {
-              setSelectedDeviceForEdit(null)
-              setFormModalOpen(true)
-            }}
-          >
-            Thêm thiết bị
-          </Button>
+          {canCreateDevice && (
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => {
+                setSelectedDeviceForEdit(null)
+                setFormModalOpen(true)
+              }}
+            >
+              Thêm thiết bị
+            </Button>
+          )}
         </Space>
       </div>
 
       <Card style={{ marginBottom: 16 }} size="small">
         <Space wrap size="middle">
           <Input
-            placeholder="Lọc theo mã thiết bị..."
-            prefix={<SearchOutlined />}
+            placeholder="Tìm theo tên, mã thiết bị, vị trí..."
+            prefix={<SearchOutlined style={{ color: '#0284c7' }} />}
             value={deviceCodeFilter}
             onChange={(e) => {
               setDeviceCodeFilter(e.target.value)
               setPage(1)
             }}
-            style={{ width: 240 }}
+            style={{ width: 260 }}
             allowClear
           />
           <Select
@@ -302,7 +327,9 @@ export default function DevicesPage() {
           />
           {(statusFilter || deviceCodeFilter) && (
             <Button
-              type="link"
+              type="dashed"
+              danger
+              icon={<ClearOutlined />}
               onClick={() => {
                 setStatusFilter('')
                 setDeviceCodeFilter('')
@@ -312,6 +339,9 @@ export default function DevicesPage() {
               Xóa lọc
             </Button>
           )}
+          <Tag color="cyan" style={{ fontWeight: 500 }}>
+            Hiển thị {filteredDevices.length} / {devices.length} thiết bị
+          </Tag>
         </Space>
       </Card>
 
@@ -319,14 +349,14 @@ export default function DevicesPage() {
         <Table
           rowKey="id"
           columns={columns}
-          dataSource={devices}
+          dataSource={filteredDevices}
           loading={loading}
           tableLayout="fixed"
           className="centered-table-header"
           pagination={{
             current: page,
             pageSize,
-            total,
+            total: filteredDevices.length,
             showSizeChanger: true,
             pageSizeOptions: ['10', '20', '50', '100'],
             onChange: (p, ps) => {

@@ -1,13 +1,12 @@
 {
   "admin": {
     "password": "admin123",
-    "full_name": "Quản trị viên Hệ thống",
+    "full_name": "Quản trị viên Cấp cao",
     "role": "admin"
   },
-  "security_admin": {
-    "password": "YourStrongPasswordHere_123!@#",
-    "full_name": "Quản trị viên Bảo mật Cấp cao",
-    "role": "admin"
+  "operator": {
+    "password": "operator123",
+    "full_name": "Nhân viên Vận hành",
+    "role": "operator"
   }
 }
-

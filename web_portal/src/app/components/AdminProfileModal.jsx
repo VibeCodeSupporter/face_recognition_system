@@ -24,7 +24,7 @@ const { Text } = Typography
 export default function AdminProfileModal({ open, onClose }) {
   const [form] = Form.useForm()
   const { message } = AntdApp.useApp()
-  const { admin, updateProfile } = useAuth()
+  const { admin, isSuperAdmin, updateProfile } = useAuth()
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
@@ -32,12 +32,14 @@ export default function AdminProfileModal({ open, onClose }) {
       form.setFieldsValue({
         username: admin?.username || 'admin',
         full_name: admin?.full_name || 'Quản trị viên Hệ thống',
-        role: admin?.role === 'admin' ? 'Quản trị viên Cấp cao' : admin?.role || 'Quản trị viên',
+        role: isSuperAdmin
+          ? 'Quản trị viên Cấp cao (Toàn quyền)'
+          : 'Nhân viên Vận hành (Xem, Tìm kiếm & Thêm Embedding)',
         new_password: '',
         confirm_password: '',
       })
     }
-  }, [open, admin, form])
+  }, [open, admin, isSuperAdmin, form])
 
   const handleSubmit = async () => {
     try {
@@ -120,9 +122,16 @@ export default function AdminProfileModal({ open, onClose }) {
             Tài khoản: @{admin?.username || 'admin'}
           </Text>
         </div>
-        <Tag color="gold" style={{ fontWeight: 600, padding: '2px 10px', borderRadius: 12 }}>
-          {admin?.role === 'admin' ? 'Quản trị viên Toàn quyền' : admin?.role || 'Admin'}
+        <Tag color={isSuperAdmin ? 'gold' : 'blue'} style={{ fontWeight: 600, padding: '2px 10px', borderRadius: 12 }}>
+          {isSuperAdmin
+            ? 'Quản trị viên Cấp cao · Toàn quyền'
+            : 'Vận hành · Xem, Tìm kiếm & Thêm Embedding'}
         </Tag>
+        <div style={{ fontSize: 12, color: '#475569', textAlign: 'center', marginTop: 2 }}>
+          {isSuperAdmin
+            ? 'Quyền: Thêm/sửa/xóa người dùng, thiết bị, phiên đăng ký, vector khuôn mặt & xóa lịch sử truy cập.'
+            : 'Quyền: Xem & tìm kiếm người dùng, thiết bị, phiên, lịch sử truy cập và thêm mới vector khuôn mặt.'}
+        </div>
       </div>
 
       <Form form={form} layout="vertical" requiredMark="optional">

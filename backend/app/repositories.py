@@ -82,10 +82,40 @@ class SessionRepository(TableRepository):
         return rows[0]
 
 
+class AccessLogRepository(TableRepository):
+    def __init__(self, database: Database):
+        super().__init__(database, "access_logs", order="access_time")
+
+    def _apply_filters(self, query, filters: dict):
+        for column, value in filters.items():
+            if column in {"limit", "offset"} or value is None:
+                continue
+            if column == "start_time":
+                query = query.gte("access_time", value)
+            elif column == "end_time":
+                query = query.lte("access_time", value)
+            else:
+                query = query.eq(column, value)
+        return query
+
+    def list(self, options: dict) -> dict:
+        limit, offset = options["limit"], options["offset"]
+        query = self.database.client.table(self.table).select(self.columns).order(self.order, desc=True).order(self.key)
+        query = self._apply_filters(query, options)
+        rows = self.database.execute(query.range(offset, offset + limit))
+        return {"items": rows[:limit], "limit": limit, "offset": offset, "has_more": len(rows) > limit}
+
+    def delete_range(self, options: dict) -> list[dict]:
+        query = self.database.client.table(self.table).delete()
+        query = self._apply_filters(query, options)
+        rows = self.database.execute(query.select(self.columns))
+        return list(rows or [])
+
+
 class Repositories:
     def __init__(self, database: Database):
         self.users = TableRepository(database, "users")
         self.devices = TableRepository(database, "devices")
         self.embeddings = EmbeddingRepository(database)
         self.sessions = SessionRepository(database)
-        self.logs = TableRepository(database, "access_logs", order="access_time")
+        self.logs = AccessLogRepository(database)

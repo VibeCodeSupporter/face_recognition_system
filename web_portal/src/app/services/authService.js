@@ -42,7 +42,7 @@ export const authService = {
 
     try {
       const { data } = await apiClient.request('/auth/me', { token: apiClient.token })
-      apiClient.admin = data
+      apiClient.setToken(apiClient.token, data)
       return true
     } catch (_) {
       apiClient.clearAuth()
