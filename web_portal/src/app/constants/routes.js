@@ -14,6 +14,7 @@ export const ROUTES = {
   DEVICES: '/devices',
   SESSIONS: '/sessions',
   LOGS: '/logs',
+  DELETION_HISTORY: '/deletion-history',
 }
 
 /** Route mặc định khi chưa đăng nhập */

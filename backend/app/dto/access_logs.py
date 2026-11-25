@@ -27,3 +27,25 @@ class AccessLogQuery(PageQuery):
     user_id: UUID | None = None
     device_id: UUID | None = None
     result: LogResult | None = None
+    start_time: Timestamp | None = None
+    end_time: Timestamp | None = None
+
+    @model_validator(mode="after")
+    def valid_range(self):
+        if self.start_time is not None and self.end_time is not None and self.start_time > self.end_time:
+            raise ValueError("start_time must be earlier than or equal to end_time.")
+        return self
+
+
+class AccessLogDeleteQuery(DTO):
+    start_time: Timestamp
+    end_time: Timestamp
+    result: LogResult | None = None
+    device_id: UUID | None = None
+    user_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def valid_range(self):
+        if self.start_time > self.end_time:
+            raise ValueError("start_time must be earlier than or equal to end_time.")
+        return self

@@ -28,6 +28,7 @@ import deviceService from '../../services/deviceService.js'
 import sessionService from '../../services/sessionService.js'
 import userService from '../../services/userService.js'
 import { getErrorMessage } from '../../services/apiClient.js'
+import { useAuth } from '../../providers/AuthProvider.jsx'
 import FaceEmbeddingModal from '../users/FaceEmbeddingModal.jsx'
 import SessionCreateModal from './SessionCreateModal.jsx'
 import SessionDetailModal from './SessionDetailModal.jsx'
@@ -61,6 +62,10 @@ function renderCompactDateTime(value) {
 
 export default function SessionsPage() {
   const { message } = AntdApp.useApp()
+  const { hasPermission } = useAuth()
+  const canCreateSession = hasPermission('sessions:create')
+  const canUpdateSession = hasPermission('sessions:update')
+  const canDeleteSession = hasPermission('sessions:delete')
 
   const [sessions, setSessions] = useState([])
   const [users, setUsers] = useState([])
@@ -307,7 +312,7 @@ export default function SessionsPage() {
       title: <span style={{ display: 'block', textAlign: 'center' }}>Thao tác</span>,
       key: 'actions',
       align: 'center',
-      width: 245,
+      width: canUpdateSession || canDeleteSession ? 245 : 90,
       render: (_, record) => {
         const isPending = record.status === 'pending'
         const isNotExpired =
@@ -318,7 +323,7 @@ export default function SessionsPage() {
             <Tooltip title="Xem chi tiết">
               <Button
                 type="text"
-                icon={<EyeOutlined />}
+                icon={<EyeOutlined style={{ color: '#0284c7' }} />}
                 onClick={() => {
                   setSelectedSessionForDetail(record)
                   setDetailModalOpen(true)
@@ -326,7 +331,7 @@ export default function SessionsPage() {
               />
             </Tooltip>
 
-            {isPending && isNotExpired && (
+            {canUpdateSession && isPending && isNotExpired && (
               <>
                 <Tooltip title="Nạp Vector khuôn mặt cho người này">
                   <Button
@@ -381,18 +386,20 @@ export default function SessionsPage() {
               </>
             )}
 
-            <Popconfirm
-              title="Xóa phiên đăng ký?"
-              description="Bản ghi phiên sẽ bị xóa vĩnh viễn khỏi hệ thống."
-              onConfirm={() => handleDeleteSession(record.id)}
-              okText="Xóa"
-              cancelText="Hủy"
-              okButtonProps={{ danger: true }}
-            >
-              <Tooltip title="Xóa phiên">
-                <Button type="text" danger icon={<DeleteOutlined />} />
-              </Tooltip>
-            </Popconfirm>
+            {canDeleteSession && (
+              <Popconfirm
+                title="Xóa phiên đăng ký?"
+                description="Bản ghi phiên sẽ bị xóa vĩnh viễn khỏi hệ thống."
+                onConfirm={() => handleDeleteSession(record.id)}
+                okText="Xóa"
+                cancelText="Hủy"
+                okButtonProps={{ danger: true }}
+              >
+                <Tooltip title="Xóa phiên">
+                  <Button type="text" danger icon={<DeleteOutlined />} />
+                </Tooltip>
+              </Popconfirm>
+            )}
           </Space>
         )
       },
@@ -421,13 +428,15 @@ export default function SessionsPage() {
           <Button icon={<ReloadOutlined />} onClick={fetchSessions} loading={loading}>
             Tải lại
           </Button>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={() => setCreateModalOpen(true)}
-          >
-            Tạo phiên mới
-          </Button>
+          {canCreateSession && (
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={() => setCreateModalOpen(true)}
+            >
+              Tạo phiên mới
+            </Button>
+          )}
         </Space>
       </div>
 

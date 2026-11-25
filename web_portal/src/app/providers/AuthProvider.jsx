@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react'
 import apiClient from '../services/apiClient.js'
 import authService from '../services/authService.js'
 
@@ -80,9 +80,45 @@ export function AuthProvider({ children }) {
     return updated
   }
 
+  const role = admin?.role || (authType === 'key' ? 'dev' : null)
+  const isSuperAdmin = Boolean(isAuthenticated && (role === 'admin' || role === 'dev' || authType === 'key'))
+  const isOperator = Boolean(isAuthenticated && role === 'operator')
+  const permissions = useMemo(() => {
+    if (Array.isArray(admin?.permissions)) {
+      return admin.permissions
+    }
+    if (isSuperAdmin) return ['*']
+    if (isOperator) {
+      return [
+        'users:read',
+        'users:search',
+        'embeddings:read',
+        'embeddings:create',
+        'devices:read',
+        'devices:search',
+        'sessions:read',
+        'sessions:search',
+        'logs:read',
+        'logs:search',
+        'logs:export',
+      ]
+    }
+    return []
+  }, [admin?.permissions, isSuperAdmin, isOperator])
+
+  const hasPermission = useCallback(
+    (perm) => isSuperAdmin || permissions.includes('*') || permissions.includes(perm),
+    [isSuperAdmin, permissions]
+  )
+
   const value = {
     isAuthenticated,
     admin,
+    role,
+    isSuperAdmin,
+    isOperator,
+    permissions,
+    hasPermission,
     authType,
     isInitializing,
     login: loginWithCredentials,

@@ -16,6 +16,7 @@ import UsersPage from '../features/users/UsersPage.jsx'
 import DevicesPage from '../features/devices/DevicesPage.jsx'
 import SessionsPage from '../features/sessions/SessionsPage.jsx'
 import LogsPage from '../features/accessLogs/LogsPage.jsx'
+import DeletionHistoryPage from '../features/deletionHistory/DeletionHistoryPage.jsx'
 
 /**
  * Route công khai (render trong AuthLayout)
@@ -35,6 +36,7 @@ const PROTECTED_ROUTES = {
   [ROUTES.DEVICES]: DevicesPage,
   [ROUTES.SESSIONS]: SessionsPage,
   [ROUTES.LOGS]: LogsPage,
+  [ROUTES.DELETION_HISTORY]: DeletionHistoryPage,
 }
 
 export default function RootRouter() {

@@ -21,16 +21,24 @@ import {
 } from 'antd'
 import userService from '../../services/userService.js'
 import { formatDateTimeVN, getErrorMessage } from '../../services/apiClient.js'
+import { useAuth } from '../../providers/AuthProvider.jsx'
 
 const { Text } = Typography
 
 export default function FaceEmbeddingModal({ open, user, onClose, onSuccess }) {
   const [form] = Form.useForm()
   const { message } = AntdApp.useApp()
+  const { hasPermission } = useAuth()
+
+  const canAddNew = hasPermission('embeddings:create')
+  const canEditExisting = hasPermission('embeddings:update')
+  const canDeleteExisting = hasPermission('embeddings:delete')
 
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [embedding, setEmbedding] = useState(null)
+
+  const canSave = embedding ? canEditExisting : canAddNew
 
   useEffect(() => {
     if (open && user?.id) {
@@ -162,7 +170,7 @@ export default function FaceEmbeddingModal({ open, user, onClose, onSuccess }) {
       open={open}
       onCancel={onClose}
       footer={[
-        embedding ? (
+        embedding && canDeleteExisting ? (
           <Popconfirm
             key="delete"
             title="Xóa vector khuôn mặt?"
@@ -180,15 +188,17 @@ export default function FaceEmbeddingModal({ open, user, onClose, onSuccess }) {
         <Button key="cancel" onClick={onClose}>
           Đóng
         </Button>,
-        <Button
-          key="submit"
-          type="primary"
-          icon={<SaveOutlined />}
-          loading={submitting}
-          onClick={handleSubmit}
-        >
-          Lưu vector
-        </Button>,
+        canSave ? (
+          <Button
+            key="submit"
+            type="primary"
+            icon={<SaveOutlined />}
+            loading={submitting}
+            onClick={handleSubmit}
+          >
+            Lưu vector
+          </Button>
+        ) : null,
       ]}
       width={720}
       destroyOnClose
@@ -207,6 +217,11 @@ export default function FaceEmbeddingModal({ open, user, onClose, onSuccess }) {
                     Model: <strong>{embedding.model_name}</strong> (v{embedding.model_version}) · Số chiều: <strong>{embedding.dimension}</strong>
                   </div>
                   <div>Cập nhật: {formatDateTimeVN(embedding.updated_at || embedding.created_at)}</div>
+                  {!canEditExisting && (
+                    <div style={{ marginTop: 4, color: '#0369a1' }}>
+                      Tài khoản vận hành chỉ có quyền xem dữ liệu đã đăng ký, không được ghi đè hoặc xóa vector đã có.
+                    </div>
+                  )}
                 </div>
               }
             />
@@ -221,7 +236,7 @@ export default function FaceEmbeddingModal({ open, user, onClose, onSuccess }) {
           )}
         </div>
 
-        <Form form={form} layout="vertical" requiredMark="optional">
+        <Form form={form} layout="vertical" requiredMark="optional" disabled={!canSave}>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
             <Form.Item
               name="model_name"
@@ -257,14 +272,16 @@ export default function FaceEmbeddingModal({ open, user, onClose, onSuccess }) {
             label={
               <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center' }}>
                 <span>Dữ liệu vector (Mảng JSON)</span>
-                <Button
-                  size="small"
-                  type="dashed"
-                  icon={<ExperimentOutlined />}
-                  onClick={handleGenerateSample}
-                >
-                  Tạo vector mẫu ngẫu nhiên
-                </Button>
+                {canSave && (
+                  <Button
+                    size="small"
+                    type="dashed"
+                    icon={<ExperimentOutlined />}
+                    onClick={handleGenerateSample}
+                  >
+                    Tạo vector mẫu ngẫu nhiên
+                  </Button>
+                )}
               </div>
             }
             rules={[{ required: true, message: 'Vui lòng nhập vector khuôn mặt!' }]}

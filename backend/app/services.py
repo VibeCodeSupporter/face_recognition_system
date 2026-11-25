@@ -46,16 +46,149 @@ class DeviceService(CRUDService):
         return {**record, "device_token": token}
 
 
+class DeletionHistoryService:
+    MAX_ITEMS = 2000
+
+    def __init__(self, history_file=None):
+        import threading
+        from app.config import BACKEND_ROOT
+        self.history_file = history_file or (BACKEND_ROOT / "data" / "deletion_history.json")
+        self._lock = threading.Lock()
+        self._ensure_dir()
+
+    def _ensure_dir(self):
+        try:
+            self.history_file.parent.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+
+    def _load(self) -> list[dict]:
+        import json
+        if not self.history_file.is_file():
+            return []
+        try:
+            with open(self.history_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                return data if isinstance(data, list) else []
+        except Exception:
+            return []
+
+    def _save(self, items: list[dict]) -> None:
+        import json
+        self._ensure_dir()
+        with open(self.history_file, "w", encoding="utf-8") as f:
+            json.dump(items[:self.MAX_ITEMS], f, ensure_ascii=False, indent=2)
+
+    def record(
+        self,
+        *,
+        entity_type: str,
+        entity_id: str,
+        title: str,
+        reason: str,
+        deleted_by: str,
+        snapshot: dict,
+    ) -> dict:
+        from uuid import uuid4
+        entry = {
+            "id": str(uuid4()),
+            "entity_type": entity_type,
+            "entity_id": str(entity_id),
+            "title": title,
+            "reason": reason,
+            "deleted_by": deleted_by,
+            "deleted_at": datetime.now(timezone.utc).isoformat(timespec="milliseconds"),
+            "snapshot": snapshot,
+        }
+        with self._lock:
+            items = self._load()
+            items.insert(0, entry)
+            self._save(items)
+        return entry
+
+    def list(self, options: dict) -> dict:
+        with self._lock:
+            items = self._load()
+
+        entity_type = options.get("entity_type")
+        search = (options.get("search") or "").strip().lower()
+        start_time = parse_time(options["start_time"]) if options.get("start_time") else None
+        end_time = parse_time(options["end_time"]) if options.get("end_time") else None
+
+        filtered = []
+        for item in items:
+            if entity_type and item.get("entity_type") != entity_type:
+                continue
+            if search:
+                haystack = " ".join([
+                    str(item.get("title", "")),
+                    str(item.get("entity_id", "")),
+                    str(item.get("reason", "")),
+                    str(item.get("deleted_by", "")),
+                ]).lower()
+                if search not in haystack:
+                    continue
+            item_time = parse_time(item["deleted_at"]) if item.get("deleted_at") else None
+            if start_time is not None and (item_time is None or item_time < start_time):
+                continue
+            if end_time is not None and (item_time is None or item_time > end_time):
+                continue
+            filtered.append(item)
+
+        limit = options.get("limit", 20)
+        offset = options.get("offset", 0)
+        page = filtered[offset:offset + limit]
+        return {
+            "items": page,
+            "total": len(filtered),
+            "limit": limit,
+            "offset": offset,
+            "has_more": len(filtered) > offset + limit,
+        }
+
+    def clear(self) -> dict:
+        with self._lock:
+            items = self._load()
+            count = len(items)
+            self._save([])
+        return {"cleared_count": count}
+
+
 class EmbeddingService:
-    def __init__(self, repositories: Repositories):
+    def __init__(self, repositories: Repositories, deletion_history: DeletionHistoryService | None = None):
         self.repositories = repositories
+        self.deletion_history = deletion_history
 
     def get(self, user_id: str):
         return self.repositories.embeddings.get(user_id)
 
     def save(self, user_id: str, values: dict):
-        self.repositories.users.get(user_id)
-        return self.repositories.embeddings.upsert({"image_url": None, **values, "user_id": user_id})
+        saved, _ = self.save_and_finalize(user_id, values)
+        return saved
+
+    def save_and_finalize(self, user_id: str, values: dict, deleted_by: str = "Hệ thống / Thiết bị (API Key)") -> tuple[dict, list[dict]]:
+        user = self.repositories.users.get(user_id)
+        saved = self.repositories.embeddings.upsert({"image_url": None, **values, "user_id": user_id})
+
+        # Tự động hoàn tất và xóa các phiên đang chờ (pending) của người dùng này
+        pending_sessions = self.repositories.sessions.list_all({"user_id": user_id, "status": "pending"})
+        finalized = []
+        now = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
+        for sess in pending_sessions:
+            completed_snapshot = {**sess, "status": "completed", "completed_at": now}
+            self.repositories.sessions.remove(sess["id"])
+            if self.deletion_history is not None:
+                self.deletion_history.record(
+                    entity_type="session",
+                    entity_id=sess["id"],
+                    title=f"[{user.get('user_code', '')}] {user.get('full_name', user_id)}".strip(),
+                    reason="Hoàn tất đăng ký khuôn mặt (tự động xóa sau khi có embedding)",
+                    deleted_by=deleted_by,
+                    snapshot=completed_snapshot,
+                )
+            finalized.append(completed_snapshot)
+
+        return saved, finalized
 
     def remove(self, user_id: str):
         self.repositories.embeddings.remove(user_id)
@@ -155,6 +288,16 @@ class AccessLogService:
             raise AppError(409, "LOG_ID_CONFLICT", "This log ID already belongs to a different event.")
         return existing, False
 
+    def delete_by_range(self, options: dict, deleted_by: str = "Quản trị viên") -> dict:
+        deleted_rows = self.repository.delete_range(options)
+        deleted_count = len(deleted_rows)
+        return {
+            "deleted_count": deleted_count,
+            "deleted_rows": deleted_rows,
+            "start_time": options["start_time"],
+            "end_time": options["end_time"],
+        }
+
 
 
 class AuthService:
@@ -171,18 +314,26 @@ class AuthService:
             pass
 
     def _get_admins(self) -> dict:
-        admins = {}
-        if self.settings:
+        from app.rbac import ROLE_ADMIN, ROLE_OPERATOR
+
+        admins = {
+            "operator": {
+                "password": "operator123",
+                "full_name": "Nhân viên Vận hành",
+                "role": ROLE_OPERATOR,
+            }
+        }
+        if self.settings and self.settings.admin_username and self.settings.admin_password:
             admins[self.settings.admin_username] = {
                 "password": self.settings.admin_password,
                 "full_name": "Quản trị viên Hệ thống",
-                "role": "admin",
+                "role": ROLE_ADMIN,
             }
         else:
             admins["admin"] = {
                 "password": "admin123",
                 "full_name": "Quản trị viên Hệ thống",
-                "role": "admin",
+                "role": ROLE_ADMIN,
             }
         if self.admin_file.is_file():
             try:
@@ -204,6 +355,7 @@ class AuthService:
         import hmac
         import time
         import jwt
+        from app.rbac import ROLE_ADMIN, get_permissions_for_role
 
         admins = self._get_admins()
         user_data = admins.get(username)
@@ -214,12 +366,14 @@ class AuthService:
         if not hmac.compare_digest(password, expected_pw):
             raise AppError(401, "INVALID_CREDENTIALS", "Tên đăng nhập hoặc mật khẩu không chính xác.")
 
+        role = user_data.get("role", ROLE_ADMIN)
+        permissions = get_permissions_for_role(role)
         now = int(time.time())
         exp = now + 86400 * 7
         secret = self._get_secret()
         payload = {
             "sub": username,
-            "role": user_data.get("role", "admin"),
+            "role": role,
             "full_name": user_data.get("full_name", "Quản trị viên"),
             "iat": now,
             "exp": exp,
@@ -230,7 +384,8 @@ class AuthService:
             "admin": {
                 "username": username,
                 "full_name": user_data.get("full_name", "Quản trị viên"),
-                "role": user_data.get("role", "admin"),
+                "role": role,
+                "permissions": permissions,
             },
         }
 
@@ -246,12 +401,14 @@ class AuthService:
 
     def update_profile(self, username: str, full_name: str | None = None, new_password: str | None = None) -> dict:
         import json
+        from app.rbac import ROLE_ADMIN, get_permissions_for_role
+
         admins = self._get_admins()
-        current = admins.get(username, {
+        current = dict(admins.get(username, {
             "password": "admin123",
             "full_name": "Quản trị viên Hệ thống",
-            "role": "admin",
-        })
+            "role": ROLE_ADMIN,
+        }))
         if full_name:
             current["full_name"] = full_name.strip()
         if new_password:
@@ -271,19 +428,21 @@ class AuthService:
         with open(self.admin_file, "w", encoding="utf-8") as f:
             json.dump(stored, f, ensure_ascii=False, indent=2)
 
+        role = current.get("role", ROLE_ADMIN)
         return {
             "username": username,
             "full_name": current["full_name"],
-            "role": current.get("role", "admin"),
+            "role": role,
+            "permissions": get_permissions_for_role(role),
         }
 
 
 class Services:
     def __init__(self, repositories: Repositories, settings=None):
-
+        self.deletion_history = DeletionHistoryService()
         self.users = CRUDService(repositories.users)
         self.devices = DeviceService(repositories.devices)
-        self.embeddings = EmbeddingService(repositories)
+        self.embeddings = EmbeddingService(repositories, self.deletion_history)
         self.sessions = SessionService(repositories)
         self.logs = AccessLogService(repositories.logs, repositories.users)
 

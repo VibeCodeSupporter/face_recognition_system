@@ -14,7 +14,7 @@ BEGIN;
 -- - Chặn tạo phiên trùng lặp nếu người dùng đang có phiên pending
 -- - Ép giới hạn tối đa 10 phiên đang chờ cho 1 thiết bị
 CREATE OR REPLACE FUNCTION public.check_registration_session_constraints()
-RETURNS trigger AS 
+RETURNS trigger AS $$
 DECLARE
     pending_count integer;
     has_face boolean;
@@ -50,7 +50,7 @@ BEGIN
 
     RETURN NEW;
 END;
- LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql;
 
 DROP TRIGGER IF EXISTS trg_check_max_pending_sessions ON public.registration_sessions;
 DROP TRIGGER IF EXISTS trg_check_registration_session_constraints ON public.registration_sessions;

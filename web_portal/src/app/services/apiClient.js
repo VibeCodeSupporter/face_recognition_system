@@ -17,6 +17,7 @@ export class ApiError extends Error {
 
 export const ERROR_MESSAGES = {
   UNAUTHORIZED: 'API key hoặc phiên đăng nhập không đúng hoặc đã hết hạn. Hãy đăng nhập lại.',
+  FORBIDDEN: 'Tài khoản của bạn không có quyền thực hiện thao tác này.',
   NOT_FOUND: 'Bản ghi không tồn tại hoặc đã bị xóa. Hãy tải lại danh sách.',
   DUPLICATE: 'Mã này đã tồn tại trong hệ thống. Vui lòng chọn mã khác.',
   REFERENCE_CONFLICT: 'Không thể thực hiện vì bản ghi đang được tham chiếu hoặc dữ liệu liên kết không tồn tại.',
@@ -190,9 +191,9 @@ class ApiClient {
         if (response.status === 401 && !isPublic) {
           this.notifyUnauthorized()
         }
-          let friendlyMessage =
-            ERROR_MESSAGES[error.code] ||
-        error.message
+        let friendlyMessage =
+          ERROR_MESSAGES[error.code] ||
+          error.message
 
         if (!friendlyMessage) {
           if (response.status === 502 || response.status === 504) {

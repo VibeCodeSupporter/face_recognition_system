@@ -96,14 +96,31 @@ class ApiClient:
             logger.error(f"[ApiClient] upload_face_embedding exception: {e}")
         return False
 
+    def has_face_embedding(self, user_id: str) -> bool | None:
+        """Check whether the user currently has a face embedding on Cloud Backend.
+        Returns True if exists, False if 404 (not registered), or None if offline/error.
+        """
+        url = f"{self.base_url}/api/v1/users/{user_id}/face-embedding"
+        try:
+            with httpx.Client(timeout=self.timeout) as client:
+                res = client.get(url, headers=self.headers)
+                if res.status_code == 200:
+                    return True
+                if res.status_code == 404:
+                    return False
+                logger.warning(f"[ApiClient] has_face_embedding unexpected HTTP {res.status_code}")
+        except Exception as e:
+            logger.warning(f"[ApiClient] has_face_embedding offline/error for {user_id}: {e}")
+        return None
+
     def complete_session(self, session_id: str) -> bool:
         url = f"{self.base_url}/api/v1/registration-sessions/{session_id}"
         payload = {"status": "completed"}
         try:
             with httpx.Client(timeout=self.timeout) as client:
                 res = client.patch(url, headers=self.headers, json=payload)
-                if res.status_code == 200:
-                    logger.info(f"[ApiClient] Completed session {session_id}")
+                if res.status_code in {200, 404}:
+                    logger.info(f"[ApiClient] Completed/removed session {session_id} (HTTP {res.status_code})")
                     return True
                 logger.error(f"[ApiClient] Failed complete session: HTTP {res.status_code} - {res.text}")
         except Exception as e:

@@ -218,7 +218,18 @@ class RegistrationPage(QWidget):
 
     def _employee_id_exists(self, employee_id: str) -> bool | None:
         try:
-            return self.registration_service.employee_id_exists(employee_id)
+            local_exists = self.registration_service.employee_id_exists(employee_id)
+            target_user_id = self.current_user_id or self.api_client.resolve_user_id(employee_id)
+            if target_user_id and len(target_user_id) == 36 and "-" in target_user_id:
+                cloud_has = self.api_client.has_face_embedding(target_user_id)
+                if cloud_has is False:
+                    # Cloud đã xóa embedding (hoặc chưa đăng ký) -> tự dọn cache cục bộ cũ
+                    if local_exists:
+                        self.registration_service.remove_local_employee(employee_id)
+                    return False
+                if cloud_has is True:
+                    return True
+            return local_exists
         except Exception as error:
             QMessageBox.critical(self, "Employee lookup failed", str(error))
             return None
@@ -327,16 +338,21 @@ class RegistrationPage(QWidget):
             self._refresh_step(captured_pose)
             self.stop_camera()
 
-            # Gửi face embedding và hoàn tất phiên lên Backend Cloud
+            # Gửi face embedding và tự động hoàn tất/xóa phiên lên Backend Cloud
             cloud_synced = False
-            if self.current_user_id and self.current_session_id:
+            target_user_id = self.current_user_id or self.api_client.resolve_user_id(self.session.employee_id)
+            if target_user_id:
                 try:
                     vector = self.session.samples[0].vector.tolist()
-                    up_ok = self.api_client.upload_face_embedding(self.current_user_id, vector)
-                    done_ok = self.api_client.complete_session(self.current_session_id)
+                    up_ok = self.api_client.upload_face_embedding(target_user_id, vector)
+                    done_ok = True
+                    if self.current_session_id:
+                        done_ok = self.api_client.complete_session(self.current_session_id)
                     cloud_synced = up_ok and done_ok
                     if cloud_synced:
-                        self._remove_completed_session(self.current_session_id)
+                        if self.current_session_id:
+                            self._remove_completed_session(self.current_session_id)
+                        self.reload_pending_sessions()
                 except Exception as e:
                     logger.error(f"[RegistrationPage] Cloud sync error: {e}")
 

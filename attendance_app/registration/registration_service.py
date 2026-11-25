@@ -27,8 +27,17 @@ class RegistrationService:
         employee_id = employee_id.strip()
         if not employee_id:
             return False
+        return self.vector_store.employee_exists(employee_id)
+
+    def remove_local_employee(self, employee_id: str) -> None:
+        """Remove stale local SQLite, FAISS vectors, and enrollment images for an employee."""
+        employee_id = employee_id.strip()
+        if not employee_id:
+            return
+        self.vector_store.remove_employee(employee_id)
         image_dir = APP_ROOT / "data" / "enrollments" / employee_id
-        return self.vector_store.employee_exists(employee_id) or image_dir.exists()
+        if image_dir.exists():
+            shutil.rmtree(image_dir, ignore_errors=True)
 
     def register(
         self,
