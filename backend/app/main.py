@@ -18,7 +18,7 @@ from starlette.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
 from app.config import BACKEND_ROOT, Settings, load_settings
-from app.controllers import router
+from app.controllers import router, ws_router
 from app.dto.common import ErrorResponse
 from app.errors import AppError
 from app.infrastructure.database import Database
@@ -67,6 +67,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         500: {"model": ErrorResponse, "description": "Unexpected server error."},
         503: {"model": ErrorResponse, "description": "Database unavailable."},
     })
+    application.include_router(ws_router)
 
 
     raw_frontend_dir = getattr(settings, "frontend_dir", "web_portal")
