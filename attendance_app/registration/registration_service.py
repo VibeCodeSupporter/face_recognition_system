@@ -47,8 +47,8 @@ class RegistrationService:
 
         image_dir = APP_ROOT / "data" / "enrollments" / employee_id
         if image_dir.exists():
-            raise FileExistsError(f"Enrollment image folder already exists: {image_dir}")
-        image_dir.mkdir(parents=True, exist_ok=False)
+            shutil.rmtree(image_dir, ignore_errors=True)
+        image_dir.mkdir(parents=True, exist_ok=True)
         try:
             for sample in samples:
                 image = np.asarray(sample.aligned_rgb)

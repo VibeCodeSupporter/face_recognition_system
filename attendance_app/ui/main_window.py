@@ -1,9 +1,10 @@
-﻿"""Main window for the camera preview demo."""
+"""Main window for the camera preview demo."""
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtWidgets import QFrame, QMainWindow, QScrollArea, QStackedWidget
 from recognition.recognition_service import RecognitionService
 from registration.registration_service import RegistrationService
 from storage.vector_store import FaissVectorStore
+from sync.sync_service import DeviceSyncService
 from ui.pages.recognition_page import RecognitionPage
 from ui.pages.registration_page import RegistrationPage
 
@@ -15,11 +16,12 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(320, 240)
         self._screen_signal_connected = False
         self.vector_store = FaissVectorStore()
+        self.sync_service = DeviceSyncService(self)
         self.recognition_page = RecognitionPage(
-            RecognitionService(self.vector_store), self
+            RecognitionService(self.vector_store), self.sync_service, self
         )
         self.registration_page = RegistrationPage(
-            RegistrationService(self.vector_store), self
+            RegistrationService(self.vector_store), self.sync_service, self
         )
         self.pages = QStackedWidget(self)
         self.pages.addWidget(self.recognition_page)
@@ -48,6 +50,8 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.page_scroll)
         self.recognition_page.register_requested.connect(self.show_registration)
         self.registration_page.back_requested.connect(self.show_recognition)
+        self.sync_service.new_session_triggered.connect(self._on_new_session_triggered)
+        self.sync_service.start()
         self.setStyleSheet("""
             QMainWindow, QWidget { background: #10151d; color: #edf2f7; font-family: Segoe UI, sans-serif; }
             QLabel#pageTitle { font-size: 25px; font-weight: 700; }
@@ -109,6 +113,7 @@ class MainWindow(QMainWindow):
         self.recognition_page.stop_camera()
         self.pages.setCurrentWidget(self.registration_page)
         self.registration_page.start_camera()
+        self.registration_page.reload_pending_sessions()
 
     def show_recognition(self) -> None:
         if self.registration_page.enrollment_started:
@@ -117,7 +122,13 @@ class MainWindow(QMainWindow):
         self.pages.setCurrentWidget(self.recognition_page)
         self.recognition_page.start_camera()
 
+    def _on_new_session_triggered(self, session: dict) -> None:
+        """Triggered when Backend notifies of a new registration session."""
+        self.show_registration()
+        self.registration_page.add_pending_session(session)
+
     def closeEvent(self, event) -> None:
+        self.sync_service.stop()
         self.recognition_page.stop_camera()
         self.registration_page.stop_camera()
         super().closeEvent(event)

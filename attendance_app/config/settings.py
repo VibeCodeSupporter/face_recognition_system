@@ -105,3 +105,8 @@ FACE_ANTISPOOF_MODEL_PATHS = [
     path if path.is_absolute() else APP_ROOT / path
     for path in _antispoof_model_paths
 ]
+
+BACKEND_URL = os.getenv("BACKEND_URL", "http://127.0.0.1:5000").rstrip("/")
+BACKEND_WS_URL = os.getenv("BACKEND_WS_URL", "ws://127.0.0.1:5000").rstrip("/")
+BACKEND_API_KEY = os.getenv("BACKEND_API_KEY", "").strip()
+DEVICE_ID = os.getenv("DEVICE_ID", "").strip()

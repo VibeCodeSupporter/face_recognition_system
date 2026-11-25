@@ -1,4 +1,4 @@
-﻿"""Live camera preview with ONNX face detection in the centered ROI."""
+"""Live camera preview with ONNX face detection in the centered ROI."""
 
 from datetime import datetime
 from pathlib import Path
@@ -31,9 +31,16 @@ from ui.guidance_aggregator import GuidanceAggregator
 class RecognitionPage(QWidget):
     register_requested = pyqtSignal()
 
-    def __init__(self, recognition_service: RecognitionService | None = None, parent=None) -> None:
+    def __init__(
+        self,
+        recognition_service: RecognitionService | None = None,
+        sync_service=None,
+        parent=None,
+    ) -> None:
         super().__init__(parent)
         self.recognition_service = recognition_service
+        self.sync_service = sync_service
+        self._last_denied_log_time = 0.0
         self.worker = None
         self.detector_available = False
         self.detector_error_message = None
@@ -349,6 +356,15 @@ class RecognitionPage(QWidget):
             self.embedding_status.setText(
                 "Không nhận diện được người này · khoảng cách vượt ngưỡng."
             )
+            # Gửi access log denied với cooldown 3s chống spam
+            now = time.monotonic()
+            if self.sync_service and (now - self._last_denied_log_time > 3.0):
+                self._last_denied_log_time = now
+                self.sync_service.send_access_log_async(
+                    user_id=None,
+                    result="denied",
+                    confidence=0.0,
+                )
         else:
             cooldown = settings.RECOGNITION_SUCCESS_COOLDOWN_SECONDS
             if self.worker is not None:
@@ -356,6 +372,15 @@ class RecognitionPage(QWidget):
             self._result_event_until = time.monotonic() + cooldown
             already_seen = match.employee_id in self.recognized_employee_ids
             self.recognized_employee_ids.add(match.employee_id)
+
+            # Gửi access log granted lên Backend Cloud
+            if not already_seen and self.sync_service:
+                conf = max(0.0, min(100.0, (1.0 - match.squared_l2_distance / 2.0) * 100.0))
+                self.sync_service.send_access_log_async(
+                    user_id=match.employee_id,
+                    result="granted",
+                    confidence=conf,
+                )
             image = np.ascontiguousarray(result.aligned_rgb)
             height, width = image.shape[:2]
             qimage = QImage(

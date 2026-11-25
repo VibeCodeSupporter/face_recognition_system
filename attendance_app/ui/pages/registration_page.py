@@ -1,16 +1,20 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
+import logging
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtWidgets import (
-    QBoxLayout, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox,
-    QProgressBar, QPushButton, QVBoxLayout, QWidget,
+    QBoxLayout, QFormLayout, QHBoxLayout, QLabel, QLineEdit, QListWidget, QListWidgetItem, QMessageBox,
+    QProgressBar, QPushButton, QSplitter, QVBoxLayout, QWidget,
 )
 
 from camera.frame_worker import FrameWorker
 from registration.registration_flow import RegistrationFrameStatus
 from registration.registration_session import RegistrationSession
 from registration.registration_service import RegistrationService
+from sync.api_client import ApiClient
 from ui.widgets.camera_view import CameraView
+
+logger = logging.getLogger(__name__)
 
 
 class RegistrationPage(QWidget):
@@ -18,14 +22,24 @@ class RegistrationPage(QWidget):
 
     back_requested = pyqtSignal()
 
-    def __init__(self, registration_service: RegistrationService, parent=None) -> None:
+    def __init__(self, registration_service: RegistrationService, sync_service=None, parent=None) -> None:
         super().__init__(parent)
         self.registration_service = registration_service
+        self.sync_service = sync_service
+        self.api_client = ApiClient()
         self.session = RegistrationSession(registration_service)
         self.worker: FrameWorker | None = None
         self.enrollment_started = False
+        self.current_session_id: str | None = None
+        self.current_user_id: str | None = None
+        self.pending_sessions_map: dict[str, dict] = {}
         self._build_ui()
         self._refresh_step()
+        self.reload_pending_sessions()
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self.reload_pending_sessions()
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -47,6 +61,36 @@ class RegistrationPage(QWidget):
         heading.addWidget(self.back_button)
         layout.addLayout(heading)
 
+        main_content = QHBoxLayout()
+
+        # Side panel: Danh sách phiên chờ đăng ký
+        sidebar = QVBoxLayout()
+        sidebar_title = QLabel("Phiên chờ đăng ký")
+        sidebar_title.setStyleSheet("font-size: 16px; font-weight: 700; color: #63b3ed;")
+        sidebar.addWidget(sidebar_title)
+
+        sidebar_sub = QLabel("Chọn người bên dưới để bắt đầu:")
+        sidebar_sub.setObjectName("mutedText")
+        sidebar.addWidget(sidebar_sub)
+
+        self.session_list = QListWidget()
+        self.session_list.setFixedWidth(260)
+        self.session_list.setStyleSheet(
+            "QListWidget { background: #1a2332; border: 1px solid #2c3e50; border-radius: 8px; padding: 4px; }"
+            "QListWidget::item { padding: 10px; border-bottom: 1px solid #243042; border-radius: 4px; color: #e2e8f0; }"
+            "QListWidget::item:hover { background: #2b3a4e; }"
+            "QListWidget::item:selected { background: #3182ce; color: #ffffff; font-weight: bold; }"
+        )
+        self.session_list.itemClicked.connect(self._on_session_item_clicked)
+        sidebar.addWidget(self.session_list, 1)
+
+        self.reload_sessions_button = QPushButton("Tải lại danh sách")
+        self.reload_sessions_button.clicked.connect(self.reload_pending_sessions)
+        sidebar.addWidget(self.reload_sessions_button)
+        main_content.addLayout(sidebar)
+
+        # Right panel: Form và Camera đăng ký
+        right_panel = QVBoxLayout()
         identity_form = QFormLayout()
         self.employee_id = QLineEdit()
         self.employee_id.setPlaceholderText("e.g. E001")
@@ -56,38 +100,38 @@ class RegistrationPage(QWidget):
         self.employee_name.returnPressed.connect(self._start_enrollment)
         identity_form.addRow("Employee ID", self.employee_id)
         identity_form.addRow("Name", self.employee_name)
-        layout.addLayout(identity_form)
+        right_panel.addLayout(identity_form)
 
         self.camera_view = CameraView()
-        layout.addWidget(self.camera_view, 1)
+        right_panel.addWidget(self.camera_view, 1)
         self.step_label = QLabel()
         self.step_label.setObjectName("faceGuidance")
         self.step_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.step_label)
+        right_panel.addWidget(self.step_label)
         self.instruction = QLabel()
         self.instruction.setObjectName("mutedText")
         self.instruction.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.instruction)
+        right_panel.addWidget(self.instruction)
         self.progress = QProgressBar()
         self.progress.setRange(0, len(self.session.POSES))
-        layout.addWidget(self.progress)
+        right_panel.addWidget(self.progress)
 
         self.guidance = QLabel("Đưa một khuôn mặt vào vùng giữa.")
         self.guidance.setObjectName("faceGuidance")
         self.guidance.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.guidance)
+        right_panel.addWidget(self.guidance)
         self.quality_details = QLabel("")
         self.quality_details.setObjectName("mutedText")
         self.quality_details.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.quality_details)
+        right_panel.addWidget(self.quality_details)
         self.embedding_status = QLabel("Đang chờ enrollment.")
         self.embedding_status.setObjectName("mutedText")
         self.embedding_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.embedding_status)
+        right_panel.addWidget(self.embedding_status)
         self.fas_status = QLabel("FAS: waiting for model")
         self.fas_status.setObjectName("mutedText")
         self.fas_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(self.fas_status)
+        right_panel.addWidget(self.fas_status)
 
         actions = QHBoxLayout()
         actions.addStretch()
@@ -98,9 +142,16 @@ class RegistrationPage(QWidget):
         self.reset_button = QPushButton("Reset enrollment")
         self.reset_button.clicked.connect(self._reset_enrollment)
         actions.addWidget(self.reset_button)
-        layout.addLayout(actions)
+        right_panel.addLayout(actions)
+
+        main_content.addLayout(right_panel, 1)
+        layout.addLayout(main_content)
         self._heading_layout = heading
         self._actions_layout = actions
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self.reload_pending_sessions()
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -183,8 +234,9 @@ class RegistrationPage(QWidget):
             return
         if exists:
             QMessageBox.warning(
-                self, "Employee ID already registered",
-                f"Employee ID {employee_id} already exists. Enter a different ID.",
+                self, "Nhân viên đã đăng ký",
+                f"Mã nhân viên '{employee_id}' đã có dữ liệu khuôn mặt trong hệ thống.\n"
+                "Để đảm bảo an toàn bảo mật, không được phép đăng ký mới hoặc ghi đè khuôn mặt.",
             )
             self.employee_id.setFocus()
             self.employee_id.selectAll()
@@ -205,8 +257,9 @@ class RegistrationPage(QWidget):
             return
         if exists:
             QMessageBox.warning(
-                self, "Employee ID already registered",
-                f"Employee ID {employee_id} already exists. Enter a different ID.",
+                self, "Nhân viên đã đăng ký",
+                f"Mã nhân viên '{employee_id}' đã có dữ liệu khuôn mặt trong hệ thống.\n"
+                "Để đảm bảo an toàn bảo mật, không được phép đăng ký mới hoặc ghi đè khuôn mặt.",
             )
             self.employee_id.setFocus()
             self.employee_id.selectAll()
@@ -273,14 +326,31 @@ class RegistrationPage(QWidget):
         if self.session.complete:
             self._refresh_step(captured_pose)
             self.stop_camera()
+
+            # Gửi face embedding và hoàn tất phiên lên Backend Cloud
+            cloud_synced = False
+            if self.current_user_id and self.current_session_id:
+                try:
+                    vector = self.session.samples[0].vector.tolist()
+                    up_ok = self.api_client.upload_face_embedding(self.current_user_id, vector)
+                    done_ok = self.api_client.complete_session(self.current_session_id)
+                    cloud_synced = up_ok and done_ok
+                    if cloud_synced:
+                        self._remove_completed_session(self.current_session_id)
+                except Exception as e:
+                    logger.error(f"[RegistrationPage] Cloud sync error: {e}")
+
+            cloud_msg = "\n(Đã đồng bộ vector và hoàn tất phiên lên Cloud Backend!)" if cloud_synced else ""
             QMessageBox.information(
                 self, "Registration complete",
                 f"{self.session.name} ({self.session.employee_id}) was saved locally with five embeddings.\n"
-                f"Aligned images: {saved_path}",
+                f"Aligned images: {saved_path}{cloud_msg}",
             )
             self.session.reset()
             self.employee_id.clear()
             self.employee_name.clear()
+            self.current_session_id = None
+            self.current_user_id = None
             self.enrollment_started = False
             self.employee_id.setEnabled(True)
             self.employee_name.setEnabled(True)
@@ -334,3 +404,75 @@ class RegistrationPage(QWidget):
 
     def _detector_error(self, message: str) -> None:
         self.guidance.setText(f"Face detector unavailable: {message}")
+
+    # ==================== PENDING SESSIONS MANAGEMENT ====================
+
+    def reload_pending_sessions(self) -> None:
+        """Fetch active pending sessions from Backend."""
+        try:
+            sessions = self.api_client.get_pending_sessions()
+            self.session_list.clear()
+            self.pending_sessions_map.clear()
+            for s in sessions:
+                self.add_pending_session(s)
+            self.guidance.setText(f"Đã tải {len(sessions)} phiên đăng ký chờ.")
+        except Exception as e:
+            logger.error(f"[RegistrationPage] reload_pending_sessions failed: {e}")
+
+    def add_pending_session(self, session: dict) -> None:
+        """Add or update a pending session in the list."""
+        session_id = str(session.get("id"))
+        if not session_id or session_id in self.pending_sessions_map:
+            return
+
+        # Fetch user info if missing
+        if ("user_code" not in session or "full_name" not in session) and session.get("user_id"):
+            try:
+                user = self.api_client.get_user(session["user_id"])
+                if user:
+                    session["user_code"] = user.get("user_code", "")
+                    session["full_name"] = user.get("full_name", "")
+            except Exception as e:
+                logger.warning(f"[RegistrationPage] Could not fetch user details for {session.get('user_id')}: {e}")
+
+        self.pending_sessions_map[session_id] = session
+
+        full_name = session.get("full_name") or session.get("name") or "Người dùng mới"
+        user_code = session.get("user_code") or session_id[:8]
+        display_text = f"👤 {full_name}\n🆔 {user_code}"
+
+        item = QListWidgetItem(display_text)
+        item.setData(Qt.ItemDataRole.UserRole, session)
+        self.session_list.addItem(item)
+        self.guidance.setText(f"🔔 Có phiên đăng ký mới: {full_name}! Chọn người để đăng ký.")
+
+    def _remove_completed_session(self, session_id: str) -> None:
+        """Remove a finalized session from list."""
+        if session_id in self.pending_sessions_map:
+            del self.pending_sessions_map[session_id]
+        for row in range(self.session_list.count()):
+            item = self.session_list.item(row)
+            if item:
+                s = item.data(Qt.ItemDataRole.UserRole)
+                if s and str(s.get("id")) == str(session_id):
+                    self.session_list.takeItem(row)
+                    break
+
+    def _on_session_item_clicked(self, item: QListWidgetItem) -> None:
+        """Triggered when user clicks a pending candidate from the list."""
+        if self.enrollment_started:
+            return
+        session = item.data(Qt.ItemDataRole.UserRole)
+        if not session:
+            return
+        self.current_session_id = str(session.get("id"))
+        self.current_user_id = str(session.get("user_id"))
+
+        user_code = session.get("user_code") or f"U_{self.current_user_id[:8]}"
+        full_name = session.get("full_name") or "Người dùng"
+
+        self.employee_id.setText(user_code)
+        self.employee_name.setText(full_name)
+        self.guidance.setText(f"Đã chọn {full_name}. Nhấn 'Bắt đầu đăng ký' để tiếp tục.")
+        self.start_button.setFocus()
+
