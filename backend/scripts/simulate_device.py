@@ -21,8 +21,8 @@ if str(_BACKEND_DIR) not in sys.path:
 from starlette.testclient import TestClient
 from app.config import Settings, load_settings
 from app.main import create_app
-from app.services import Services
-from app.repositories import Repositories, TableRepository, EmbeddingRepository, SessionRepository
+from app.services import Services, parse_time
+from app.repositories import Repositories, TableRepository, EmbeddingRepository, SessionRepository, AccessLogRepository
 from app.infrastructure.database import Database
 from app.errors import AppError
 
@@ -120,6 +120,49 @@ class MockSessionRepo(SessionRepository, MockTableRepo):
         return row
 
 
+class MockAccessLogRepo(AccessLogRepository, MockTableRepo):
+    def __init__(self, db: InMemoryDB):
+        MockTableRepo.__init__(self, db, "access_logs", order="access_time")
+
+    def _filter_rows(self, rows: list[dict], filters: dict) -> list[dict]:
+        start_time = parse_time(filters["start_time"]) if filters.get("start_time") else None
+        end_time = parse_time(filters["end_time"]) if filters.get("end_time") else None
+        filtered = []
+        for row in rows:
+            matched = True
+            for k, v in filters.items():
+                if k in {"limit", "offset", "start_time", "end_time"} or v is None:
+                    continue
+                if row.get(k) != v:
+                    matched = False
+                    break
+            if not matched:
+                continue
+            row_time = parse_time(row.get("access_time"))
+            if start_time is not None and (row_time is None or row_time < start_time):
+                continue
+            if end_time is not None and (row_time is None or row_time > end_time):
+                continue
+            filtered.append(row)
+        return filtered
+
+    def list(self, options: dict) -> dict:
+        rows = sorted(
+            self._filter_rows(list(self.db.tables[self.table].values()), options),
+            key=lambda r: r.get("access_time") or "",
+            reverse=True,
+        )
+        limit = options.get("limit", 20)
+        offset = options.get("offset", 0)
+        return {"items": rows[offset:offset + limit], "limit": limit, "offset": offset, "has_more": len(rows) > offset + limit}
+
+    def delete_range(self, options: dict) -> list[dict]:
+        to_delete = self._filter_rows(list(self.db.tables[self.table].values()), options)
+        for row in to_delete:
+            self.remove(row["id"])
+        return to_delete
+
+
 def build_test_app():
     env_file = _BACKEND_DIR / ".env"
     if env_file.exists():
@@ -151,7 +194,7 @@ def build_test_app():
     repos.devices = MockTableRepo(db, "devices")
     repos.embeddings = MockEmbeddingRepo(db)
     repos.sessions = MockSessionRepo(db)
-    repos.logs = MockTableRepo(db, "access_logs", order="access_time")
+    repos.logs = MockAccessLogRepo(db)
 
     app = create_app(settings)
     app.state.database = db

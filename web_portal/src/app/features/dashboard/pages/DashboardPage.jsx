@@ -36,11 +36,14 @@ import logService from '../../../services/logService.js'
 import sessionService from '../../../services/sessionService.js'
 import userService from '../../../services/userService.js'
 import apiClient, { formatDateTimeVN } from '../../../services/apiClient.js'
+import { useAuth } from '../../../providers/AuthProvider.jsx'
 
 const { Title, Text, Paragraph } = Typography
 
 export default function DashboardPage() {
   const { navigate } = useHashRoute()
+  const { hasPermission } = useAuth()
+  const canCreateSession = hasPermission('sessions:create')
 
   const [loading, setLoading] = useState(false)
   const [stats, setStats] = useState({
@@ -369,8 +372,10 @@ export default function DashboardPage() {
                   borderColor: '#fde047',
                 },
                 {
-                  title: 'Tạo phiên đăng ký khuôn mặt',
-                  desc: 'Khởi tạo phiên chụp ảnh và nạp vector tại cửa',
+                  title: canCreateSession ? 'Tạo phiên đăng ký khuôn mặt' : 'Tra cứu phiên đăng ký khuôn mặt',
+                  desc: canCreateSession
+                    ? 'Khởi tạo phiên chụp ảnh và nạp vector tại cửa'
+                    : 'Xem danh sách và trạng thái phiên đăng ký khuôn mặt',
                   icon: <PlusOutlined style={{ fontSize: 20, color: '#0ea5e9' }} />,
                   route: ROUTES.SESSIONS,
                   hoverBg: '#f0fdf4',

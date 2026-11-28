@@ -1,0 +1,38 @@
+[
+  {
+    "id": "a66b39b4-aa87-48df-a7e8-7dd1f8bb7cf7",
+    "entity_type": "session",
+    "entity_id": "5aa4d2e5-4ec4-4b0b-99d4-8c65616a0524",
+    "title": "[NV002] Trần Đình Hoàng",
+    "reason": "Xóa phiên đăng ký thủ công",
+    "deleted_by": "admin (blueStar)",
+    "deleted_at": "2026-11-25T09:45:18.713+00:00",
+    "snapshot": {
+      "id": "5aa4d2e5-4ec4-4b0b-99d4-8c65616a0524",
+      "user_id": "a834c1ee-23ad-454d-8514-6e87526e03f2",
+      "device_id": "33de6943-2572-4149-b7f7-05a39c36da43",
+      "status": "failed",
+      "expires_at": "2026-11-25T10:14:47.431+00:00",
+      "created_at": "2026-11-25T09:44:54.540083+00:00",
+      "completed_at": null
+    }
+  },
+  {
+    "id": "0369ec7a-9ec9-4558-ab40-906d3956dd0f",
+    "entity_type": "session",
+    "entity_id": "a6c1211e-cae5-4af2-a478-f67e95f0290f",
+    "title": "[NV001] Phạm Văn Đạt",
+    "reason": "Hoàn tất đăng ký khuôn mặt (tự động xóa sau khi có embedding)",
+    "deleted_by": "Hệ thống / Thiết bị (API Key)",
+    "deleted_at": "2026-11-25T09:42:00.166+00:00",
+    "snapshot": {
+      "id": "a6c1211e-cae5-4af2-a478-f67e95f0290f",
+      "user_id": "b1c088a5-c27f-486a-8a3f-bed5d356ca70",
+      "device_id": "33de6943-2572-4149-b7f7-05a39c36da43",
+      "status": "completed",
+      "expires_at": "2026-11-25T10:04:46.445+00:00",
+      "created_at": "2026-11-25T09:34:52.871425+00:00",
+      "completed_at": "2026-11-25T09:42:00.029+00:00"
+    }
+  }
+]

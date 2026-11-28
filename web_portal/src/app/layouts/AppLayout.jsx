@@ -8,6 +8,7 @@ import {
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
+  RestOutlined,
   SafetyCertificateOutlined,
   TeamOutlined,
   UserOutlined,
@@ -39,11 +40,12 @@ const ROUTE_LABELS = {
   [ROUTES.DEVICES]: 'Thiết bị',
   [ROUTES.SESSIONS]: 'Phiên đăng ký',
   [ROUTES.LOGS]: 'Lịch sử truy cập',
+  [ROUTES.DELETION_HISTORY]: 'Lịch sử đã xóa',
 }
 
 export default function AppLayout({ children }) {
   const { path, navigate } = useHashRoute()
-  const { admin, authType, logout } = useAuth()
+  const { admin, isSuperAdmin, logout } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
   const [profileModalOpen, setProfileModalOpen] = useState(false)
 
@@ -74,6 +76,11 @@ export default function AppLayout({ children }) {
       key: ROUTES.LOGS,
       icon: <HistoryOutlined />,
       label: 'Lịch sử truy cập',
+    },
+    {
+      key: ROUTES.DELETION_HISTORY,
+      icon: <RestOutlined />,
+      label: 'Lịch sử đã xóa',
     },
   ]
 
@@ -196,6 +203,12 @@ export default function AppLayout({ children }) {
                   <span style={{ fontSize: 13, fontWeight: 600, color: '#0369a1' }}>
                     {admin?.full_name || admin?.username || 'Quản trị viên'}
                   </span>
+                  <Tag
+                    color={isSuperAdmin ? 'gold' : 'blue'}
+                    style={{ margin: 0, borderRadius: 12, fontSize: 11, fontWeight: 600 }}
+                  >
+                    {isSuperAdmin ? 'Cấp cao · Toàn quyền' : 'Vận hành · Xem & Embedding'}
+                  </Tag>
                 </div>
               </Tooltip>
 

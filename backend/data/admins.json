@@ -3,5 +3,10 @@
     "password": "admin123",
     "full_name": "blueStar",
     "role": "admin"
+  },
+  "operator": {
+    "password": "operator123",
+    "full_name": "Nhân viên Vận hành",
+    "role": "operator"
   }
 }

@@ -27,6 +27,7 @@ import {
 } from 'antd'
 import userService from '../../services/userService.js'
 import { getErrorMessage } from '../../services/apiClient.js'
+import { useAuth } from '../../providers/AuthProvider.jsx'
 import FaceEmbeddingModal from './FaceEmbeddingModal.jsx'
 import UserDetailModal from './UserDetailModal.jsx'
 import UserFormModal from './UserFormModal.jsx'
@@ -35,6 +36,10 @@ const { Title, Text } = Typography
 
 export default function UsersPage() {
   const { message } = AntdApp.useApp()
+  const { hasPermission } = useAuth()
+  const canCreateUser = hasPermission('users:create')
+  const canUpdateUser = hasPermission('users:update')
+  const canDeleteUser = hasPermission('users:delete')
 
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(false)
@@ -299,7 +304,7 @@ export default function UsersPage() {
       title: <span style={{ display: 'block', textAlign: 'center' }}>Thao tác</span>,
       key: 'actions',
       align: 'center',
-      width: 165,
+      width: canUpdateUser || canDeleteUser ? 165 : 105,
       render: (_, record) => (
         <Space size="small" style={{ whiteSpace: 'nowrap' }}>
           <Tooltip title="Xem chi tiết">
@@ -312,16 +317,18 @@ export default function UsersPage() {
               }}
             />
           </Tooltip>
-          <Tooltip title="Sửa thông tin">
-            <Button
-              type="text"
-              icon={<EditOutlined style={{ color: '#0ea5e9' }} />}
-              onClick={() => {
-                setSelectedUserForEdit(record)
-                setFormModalOpen(true)
-              }}
-            />
-          </Tooltip>
+          {canUpdateUser && (
+            <Tooltip title="Sửa thông tin">
+              <Button
+                type="text"
+                icon={<EditOutlined style={{ color: '#0ea5e9' }} />}
+                onClick={() => {
+                  setSelectedUserForEdit(record)
+                  setFormModalOpen(true)
+                }}
+              />
+            </Tooltip>
+          )}
           <Tooltip title="Vector khuôn mặt">
             <Button
               type="text"
@@ -332,18 +339,20 @@ export default function UsersPage() {
               }}
             />
           </Tooltip>
-          <Popconfirm
-            title="Xác nhận xóa người dùng?"
-            description={`Bạn có chắc muốn xóa "${record.full_name}"? Mọi phiên đăng ký và vector khuôn mặt liên quan sẽ bị xóa.`}
-            onConfirm={() => handleDeleteUser(record.id)}
-            okText="Xóa"
-            cancelText="Hủy"
-            okButtonProps={{ danger: true }}
-          >
-            <Tooltip title="Xóa người dùng">
-              <Button type="text" danger icon={<DeleteOutlined />} />
-            </Tooltip>
-          </Popconfirm>
+          {canDeleteUser && (
+            <Popconfirm
+              title="Xác nhận xóa người dùng?"
+              description={`Bạn có chắc muốn xóa "${record.full_name}"? Mọi phiên đăng ký và vector khuôn mặt liên quan sẽ bị xóa.`}
+              onConfirm={() => handleDeleteUser(record.id)}
+              okText="Xóa"
+              cancelText="Hủy"
+              okButtonProps={{ danger: true }}
+            >
+              <Tooltip title="Xóa người dùng">
+                <Button type="text" danger icon={<DeleteOutlined />} />
+              </Tooltip>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
@@ -371,20 +380,22 @@ export default function UsersPage() {
           <Button icon={<ReloadOutlined />} onClick={fetchUsers} loading={loading}>
             Tải lại
           </Button>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            style={{
-              backgroundColor: '#0284c7',
-              boxShadow: '0 2px 8px rgba(2, 132, 199, 0.35)',
-            }}
-            onClick={() => {
-              setSelectedUserForEdit(null)
-              setFormModalOpen(true)
-            }}
-          >
-            Thêm người dùng
-          </Button>
+          {canCreateUser && (
+            <Button
+              type="primary"
+              icon={<PlusOutlined />}
+              style={{
+                backgroundColor: '#0284c7',
+                boxShadow: '0 2px 8px rgba(2, 132, 199, 0.35)',
+              }}
+              onClick={() => {
+                setSelectedUserForEdit(null)
+                setFormModalOpen(true)
+              }}
+            >
+              Thêm người dùng
+            </Button>
+          )}
         </Space>
       </div>
 

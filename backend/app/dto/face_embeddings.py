@@ -4,7 +4,7 @@ from app.dto.common import DTO, text
 
 
 class FaceEmbeddingPut(DTO):
-    image_url: text(2048) | None = None
+    image_url: text(100000) | None = None
     model_name: text(100)
     model_version: text(30)
     dimension: int = Field(strict=True, ge=1, le=4096)

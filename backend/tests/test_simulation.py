@@ -16,6 +16,7 @@ from scripts.simulate_device import (
     MockTableRepo,
     MockEmbeddingRepo,
     MockSessionRepo,
+    MockAccessLogRepo,
 )
 
 
@@ -35,7 +36,7 @@ def sim_context():
     repos.devices = MockTableRepo(db, "devices")
     repos.embeddings = MockEmbeddingRepo(db)
     repos.sessions = MockSessionRepo(db)
-    repos.logs = MockTableRepo(db, "access_logs", order="access_time")
+    repos.logs = MockAccessLogRepo(db)
 
     app = create_app(settings)
     app.state.database = db
@@ -96,7 +97,7 @@ def test_device_websocket_trigger_and_registration(sim_context):
         assert dev_msg["event"] == "NEW_REGISTRATION_SESSION"
         assert dev_msg["session"]["id"] == session_id
 
-        # 3. Device sends face embedding
+        # 3. Device sends face embedding -> backend auto-completes & deletes pending session
         vector = [round(random.uniform(-0.1, 0.1), 4) for _ in range(512)]
         put_res = client.put(f"/api/v1/users/{user_id}/face-embedding", headers=headers, json={
             "model_name": "GhostFaceNet",
@@ -106,19 +107,15 @@ def test_device_websocket_trigger_and_registration(sim_context):
         })
         assert put_res.status_code == 200
 
-        # 4. Device finalizes session
-        patch_res = client.patch(f"/api/v1/registration-sessions/{session_id}", headers=headers, json={
-            "status": "completed",
-        })
-        assert patch_res.status_code == 200
-        completed = patch_res.json()["data"]
-        assert completed["status"] == "completed"
+        # Session was automatically completed and deleted from active registration_sessions
+        assert client.get(f"/api/v1/registration-sessions/{session_id}", headers=headers).status_code == 404
 
-        # Portal receives event
+        # Portal receives SESSION_FINALIZED event
         portal_msg = json.loads(portal_ws.receive_text())
-        if portal_msg.get("event") == "SESSION_CREATED":
+        while portal_msg.get("event") == "SESSION_CREATED":
             portal_msg = json.loads(portal_ws.receive_text())
         assert portal_msg["event"] == "SESSION_FINALIZED"
+        assert portal_msg["session"]["status"] == "completed"
         assert portal_msg["session"]["id"] == session_id
 
 
